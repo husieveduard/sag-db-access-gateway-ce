@@ -3,6 +3,8 @@
 return [
     'edition' => env('SAG_EDITION', 'ce'),
 
+    'internal_token' => env('SAG_INTERNAL_TOKEN'),
+
     'supported_locales' => [
         'uk' => 'Українська',
         'en' => 'English',
