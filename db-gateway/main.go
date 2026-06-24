@@ -142,6 +142,30 @@ func auditDeniedConnection(clientIP string, clientPort int, remote string, adapt
 	})
 }
 
+func auditDeniedSession(clientIP string, clientPort int, remote string, adapter DBAdapter, reasonCode string) {
+	if !shouldEmitDeniedAudit(clientIP) {
+		return
+	}
+
+	postJSON("/api/internal/db/connection-denied", map[string]any{
+		"session_uid":         sessionUID,
+		"client_ip":           clientIP,
+		"client_port":         clientPort,
+		"db_engine":           adapter.Engine(),
+		"db_name":             dbName,
+		"db_username":         dbUser,
+		"allowed_source_cidr": allowedSourceCIDR,
+		"reason_code":         reasonCode,
+		"metadata": map[string]any{
+			"source":               "sag-db-gateway",
+			"mode":                 adapter.Mode(),
+			"remote_addr":          remote,
+			"session_status_check": true,
+			"rate_limit":           "30s_per_session_ip",
+		},
+	})
+}
+
 func isClientSourceAllowed(host string) bool {
 	if allowedSourceCIDR == "" {
 		return true
@@ -188,6 +212,84 @@ func isClientSourceAllowed(host string) bool {
 	return allowedIP.Equal(ip)
 }
 
+func checkSessionStatus(adapter DBAdapter) (bool, string) {
+	payload, err := json.Marshal(map[string]string{
+		"session_uid": sessionUID,
+	})
+	if err != nil {
+		log.Printf("session status payload build failed: %v", err)
+		return false, "session_status_unavailable"
+	}
+
+	req, err := http.NewRequest(
+		"POST",
+		strings.TrimRight(controlURL, "/")+"/api/internal/db/session-status",
+		bytes.NewReader(payload),
+	)
+	if err != nil {
+		log.Printf("session status request build failed: %v", err)
+		return false, "session_status_unavailable"
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-SAG-Internal-Token", internalToken)
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("session status request failed: %v", err)
+		return false, "session_status_unavailable"
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		log.Printf(
+			"session status rejected: status=%d body=%s session_uid=%s",
+			resp.StatusCode,
+			strings.TrimSpace(string(body)),
+			sessionUID,
+		)
+		return false, "session_status_unavailable"
+	}
+
+	var result struct {
+		OK                bool   `json:"ok"`
+		Allowed           bool   `json:"allowed"`
+		Reason            string `json:"reason"`
+		DBEngine          string `json:"db_engine"`
+		AllowedSourceCIDR string `json:"allowed_source_cidr"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		log.Printf("session status response decode failed: %v", err)
+		return false, "session_status_unavailable"
+	}
+
+	if !result.OK {
+		return false, "session_status_invalid"
+	}
+
+	if !result.Allowed {
+		if strings.TrimSpace(result.Reason) != "" {
+			return false, result.Reason
+		}
+
+		return false, "session_not_allowed"
+	}
+
+	if result.DBEngine != "" && !strings.EqualFold(result.DBEngine, adapter.Engine()) {
+		return false, "db_engine_mismatch"
+	}
+
+	if strings.TrimSpace(result.AllowedSourceCIDR) != "" &&
+		strings.TrimSpace(result.AllowedSourceCIDR) != strings.TrimSpace(allowedSourceCIDR) {
+		return false, "allowed_source_cidr_mismatch"
+	}
+
+	return true, ""
+}
+
 func selectAdapter(engine string) (DBAdapter, error) {
 	switch strings.ToLower(engine) {
 	case "postgresql", "postgres":
@@ -207,6 +309,19 @@ func handleClient(client net.Conn, adapter DBAdapter) {
 	remote := client.RemoteAddr().String()
 	host, portStr, _ := net.SplitHostPort(remote)
 	port, _ := strconv.Atoi(portStr)
+
+	if allowed, reason := checkSessionStatus(adapter); !allowed {
+		log.Printf(
+			"connection denied by session status: remote_ip=%s remote=%s reason=%s session_uid=%s",
+			host,
+			remote,
+			reason,
+			sessionUID,
+		)
+
+		auditDeniedSession(host, port, remote, adapter, reason)
+		return
+	}
 
 	if !isClientSourceAllowed(host) {
 		log.Printf(

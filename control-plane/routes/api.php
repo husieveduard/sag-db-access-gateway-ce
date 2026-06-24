@@ -11,6 +11,7 @@ Route::get('/health', function () {
 });
 
 Route::prefix('internal/db')->group(function () {
+    Route::post('/session-status', [InternalDbGatewayController::class, 'sessionStatus']);
     Route::post('/connection-started', [InternalDbGatewayController::class, 'connectionStarted']);
     Route::post('/connection-denied', [InternalDbGatewayController::class, 'connectionDenied']);
     Route::post('/connection-ended', [InternalDbGatewayController::class, 'connectionEnded']);

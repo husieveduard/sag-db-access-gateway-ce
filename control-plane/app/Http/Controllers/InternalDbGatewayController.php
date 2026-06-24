@@ -408,6 +408,50 @@ class InternalDbGatewayController extends Controller
         ]);
     }
 
+
+    public function sessionStatus(Request $request): JsonResponse
+    {
+        if ($deny = $this->denyIfInvalidInternalToken($request)) {
+            return $deny;
+        }
+
+        $data = $request->validate([
+            'session_uid' => ['required', 'string', 'max:80'],
+        ]);
+
+        $session = DbAccessSession::query()
+            ->with('resource')
+            ->where('public_id', $data['session_uid'])
+            ->first();
+
+        if (!$session) {
+            return response()->json([
+                'ok' => true,
+                'allowed' => false,
+                'reason' => 'session_not_found',
+            ]);
+        }
+
+        $reason = null;
+
+        if (!$session->resource?->is_active) {
+            $reason = 'resource_inactive';
+        } elseif (!in_array($session->status, ['created', 'starting', 'started'], true)) {
+            $reason = 'session_not_allowed';
+        } elseif ($session->expires_at?->isPast()) {
+            $reason = 'session_expired';
+        }
+
+        return response()->json([
+            'ok' => true,
+            'allowed' => $reason === null,
+            'reason' => $reason,
+            'session_status' => $session->status,
+            'db_engine' => $session->resource?->engine,
+            'allowed_source_cidr' => $session->allowed_source_cidr,
+        ]);
+    }
+
     private function findSession(string $publicId): DbAccessSession
     {
         $session = DbAccessSession::query()
