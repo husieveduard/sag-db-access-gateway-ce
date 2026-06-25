@@ -50,6 +50,11 @@ class DbAccessSession extends Model
         ];
     }
 
+    public function getRouteKeyName(): string
+    {
+        return 'public_id';
+    }
+
     public function resource(): BelongsTo
     {
         return $this->belongsTo(DatabaseResource::class, 'resource_id');
@@ -83,5 +88,10 @@ class DbAccessSession extends Model
     public function auditEvents(): HasMany
     {
         return $this->hasMany(AuditEvent::class, 'session_id');
+    }
+
+    public function operations(): HasMany
+    {
+        return $this->hasMany(DbAccessOperation::class, 'session_id');
     }
 }

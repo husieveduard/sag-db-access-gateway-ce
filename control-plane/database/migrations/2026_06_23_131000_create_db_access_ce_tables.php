@@ -179,7 +179,7 @@ return new class extends Migration
             $table->string('sql_hash', 64)->nullable();
             $table->boolean('sql_redacted')->default(false);
 
-            // executed, failed, denied
+            // executed, failed, denied, interrupted
             $table->string('query_status', 16)->default('executed');
             $table->unsignedInteger('duration_ms')->nullable();
             $table->bigInteger('rows_affected')->nullable();
@@ -189,27 +189,23 @@ return new class extends Migration
 
             $table->timestampTz('occurred_at');
             $table->json('metadata')->nullable();
-
             $table->timestampsTz();
 
-            $table->index([');
+            $table->index(
+                ['connection_id', 'occurred_at'],
+                'db_query_events_connection_time_idx'
+            );
 
-            // executed, failed, denied
-            $table->string('query_status', 16)->default('executed');
-            $table->unsignedInteger('duration_ms')->nullable();
-            $table->bigInteger('rows_affected')->nullable();
+            $table->index(
+                ['session_id', 'risk_level', 'occurred_at'],
+                'db_query_events_session_risk_time_idx'
+            );
 
-            $table->string('error_code', 64)->nullable();
-            $table->text('error_message')->nullable();
+            $table->index(
+                ['resource_id', 'occurred_at'],
+                'db_query_events_resource_time_idx'
+            );
 
-            $table->timestampTz('occurred_at');
-            $table->json('metadata')->nullable();
-
-            $table->timestampsTz();
-
-            $table->index(['connection_id', 'occurred_at'], 'db_query_events_connection_time_idx');
-            $table->index(['session_id', 'risk_level', 'occurred_at'], 'db_query_events_session_risk_time_idx');
-            $table->index(['resource_id', 'occurred_at'], 'db_query_events_resource_time_idx');
             $table->index('sql_hash', 'db_query_events_sql_hash_idx');
         });
 

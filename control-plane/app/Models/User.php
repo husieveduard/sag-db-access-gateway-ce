@@ -21,6 +21,8 @@ class User extends Authenticatable
     protected $hidden = [
         'password',
         'remember_token',
+        'mfa_totp_secret',
+        'mfa_recovery_codes',
     ];
 
     protected function casts(): array
@@ -31,6 +33,11 @@ class User extends Authenticatable
             'is_active' => 'boolean',
             'is_service_account' => 'boolean',
             'last_login_at' => 'datetime',
+            'mfa_totp_secret' => 'encrypted',
+            'mfa_enabled_at' => 'datetime',
+            'mfa_last_used_at' => 'datetime',
+            'mfa_reset_at' => 'datetime',
+            'mfa_recovery_codes' => 'array',
         ];
     }
 

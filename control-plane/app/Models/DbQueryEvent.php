@@ -31,6 +31,7 @@ class DbQueryEvent extends Model
         'error_code',
         'error_message',
         'occurred_at',
+        'ended_at',
         'metadata',
     ];
 
@@ -42,6 +43,7 @@ class DbQueryEvent extends Model
             'duration_ms' => 'integer',
             'rows_affected' => 'integer',
             'occurred_at' => 'datetime',
+            'ended_at' => 'datetime',
             'metadata' => 'array',
         ];
     }

@@ -372,6 +372,12 @@ class InternalDbGatewayController extends Controller
             ],
         ];
 
+        if (!empty($data['ended_at'])) {
+            $queryAttributes['ended_at'] = $this->eventTimestamp(
+                $data['ended_at']
+            );
+        }
+
         if ($query) {
             $query->update($queryAttributes);
         } else {
@@ -536,6 +542,14 @@ class InternalDbGatewayController extends Controller
 
         if (str_contains($status, 'deny')) {
             return 'denied';
+        }
+
+        if (
+            str_contains($status, 'interrupt')
+            || str_contains($status, 'terminat')
+            || str_contains($status, 'expire')
+        ) {
+            return 'interrupted';
         }
 
         if ($status === 'running') {

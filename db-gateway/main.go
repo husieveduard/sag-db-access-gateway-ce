@@ -656,9 +656,256 @@ func (a *MSSQLAdapter) backendToClient(backend net.Conn, client net.Conn, state 
 |--------------------------------------------------------------------------
 */
 
+type SQLClassification struct {
+	StatementType string
+	RiskLevel     string
+	Reasons       []string
+}
+
+func classifySQL(sql string) SQLClassification {
+	scan := strings.ToUpper(stripSQLCommentsAndLiterals(sql))
+	statementType := firstSQLKeyword(scan)
+
+	switch statementType {
+	case "SELECT", "SHOW", "DESCRIBE", "DESC", "EXPLAIN", "VALUES":
+		return SQLClassification{
+			StatementType: statementType,
+			RiskLevel:     "low",
+			Reasons:       []string{"read_only"},
+		}
+
+	case "SET", "USE", "BEGIN", "START", "COMMIT", "ROLLBACK", "SAVEPOINT", "RELEASE":
+		return SQLClassification{
+			StatementType: statementType,
+			RiskLevel:     "low",
+			Reasons:       []string{"session_or_transaction_control"},
+		}
+
+	case "INSERT", "REPLACE", "MERGE":
+		return SQLClassification{
+			StatementType: statementType,
+			RiskLevel:     "medium",
+			Reasons:       []string{"data_change"},
+		}
+
+	case "UPDATE":
+		if containsSQLKeyword(scan, "WHERE") {
+			return SQLClassification{
+				StatementType: "UPDATE",
+				RiskLevel:     "medium",
+				Reasons:       []string{"controlled_data_change"},
+			}
+		}
+
+		return SQLClassification{
+			StatementType: "UPDATE",
+			RiskLevel:     "high",
+			Reasons:       []string{"update_without_where"},
+		}
+
+	case "DELETE":
+		if containsSQLKeyword(scan, "WHERE") {
+			return SQLClassification{
+				StatementType: "DELETE",
+				RiskLevel:     "medium",
+				Reasons:       []string{"controlled_delete"},
+			}
+		}
+
+		return SQLClassification{
+			StatementType: "DELETE",
+			RiskLevel:     "high",
+			Reasons:       []string{"delete_without_where"},
+		}
+
+	case "CREATE":
+		if containsSQLKeyword(scan, "TEMP") || containsSQLKeyword(scan, "TEMPORARY") {
+			return SQLClassification{
+				StatementType: "CREATE_TEMP_TABLE",
+				RiskLevel:     "medium",
+				Reasons:       []string{"temporary_object"},
+			}
+		}
+
+		return SQLClassification{
+			StatementType: "CREATE",
+			RiskLevel:     "high",
+			Reasons:       []string{"schema_change"},
+		}
+
+	case "ALTER", "DROP", "TRUNCATE":
+		return SQLClassification{
+			StatementType: statementType,
+			RiskLevel:     "high",
+			Reasons:       []string{"destructive_schema_or_data_change"},
+		}
+
+	case "GRANT", "REVOKE", "KILL":
+		return SQLClassification{
+			StatementType: statementType,
+			RiskLevel:     "high",
+			Reasons:       []string{"privileged_operation"},
+		}
+
+	case "CALL", "DO", "EXEC", "EXECUTE":
+		return SQLClassification{
+			StatementType: statementType,
+			RiskLevel:     "high",
+			Reasons:       []string{"stored_routine_or_dynamic_execution"},
+		}
+
+	case "ANALYZE", "VACUUM", "REINDEX", "OPTIMIZE", "REPAIR", "CHECK", "LOCK", "UNLOCK", "COPY":
+		return SQLClassification{
+			StatementType: statementType,
+			RiskLevel:     "medium",
+			Reasons:       []string{"maintenance_or_locking_operation"},
+		}
+
+	case "WITH":
+		return SQLClassification{
+			StatementType: "WITH",
+			RiskLevel:     "medium",
+			Reasons:       []string{"cte_statement_requires_review"},
+		}
+
+	default:
+		return SQLClassification{
+			StatementType: "UNKNOWN",
+			RiskLevel:     "medium",
+			Reasons:       []string{"unknown_statement"},
+		}
+	}
+}
+
+func firstSQLKeyword(sql string) string {
+	start := 0
+
+	for start < len(sql) && !isSQLWordChar(sql[start]) {
+		start++
+	}
+
+	end := start
+
+	for end < len(sql) && isSQLWordChar(sql[end]) {
+		end++
+	}
+
+	return sql[start:end]
+}
+
+func containsSQLKeyword(sql, keyword string) bool {
+	offset := 0
+
+	for offset < len(sql) {
+		index := strings.Index(sql[offset:], keyword)
+
+		if index < 0 {
+			return false
+		}
+
+		index += offset
+		end := index + len(keyword)
+
+		leftBoundary := index == 0 || !isSQLWordChar(sql[index-1])
+		rightBoundary := end >= len(sql) || !isSQLWordChar(sql[end])
+
+		if leftBoundary && rightBoundary {
+			return true
+		}
+
+		offset = end
+	}
+
+	return false
+}
+
+func isSQLWordChar(value byte) bool {
+	return (value >= 'A' && value <= 'Z') ||
+		(value >= 'a' && value <= 'z') ||
+		(value >= '0' && value <= '9') ||
+		value == '_'
+}
+
+func stripSQLCommentsAndLiterals(sql string) string {
+	var result strings.Builder
+
+	for index := 0; index < len(sql); {
+		current := sql[index]
+
+		if current == '\'' || current == '"' || current == '`' {
+			quote := current
+			result.WriteByte(' ')
+			index++
+
+			for index < len(sql) {
+				if sql[index] == '\\' && index+1 < len(sql) {
+					index += 2
+					continue
+				}
+
+				if sql[index] == quote {
+					if quote == '\'' && index+1 < len(sql) && sql[index+1] == quote {
+						index += 2
+						continue
+					}
+
+					index++
+					break
+				}
+
+				index++
+			}
+
+			result.WriteByte(' ')
+			continue
+		}
+
+		if current == '-' && index+1 < len(sql) && sql[index+1] == '-' {
+			result.WriteByte(' ')
+
+			for index < len(sql) && sql[index] != '\n' {
+				index++
+			}
+
+			continue
+		}
+
+		if current == '#' {
+			result.WriteByte(' ')
+
+			for index < len(sql) && sql[index] != '\n' {
+				index++
+			}
+
+			continue
+		}
+
+		if current == '/' && index+1 < len(sql) && sql[index+1] == '*' {
+			result.WriteByte(' ')
+			index += 2
+
+			for index+1 < len(sql) && !(sql[index] == '*' && sql[index+1] == '/') {
+				index++
+			}
+
+			if index+1 < len(sql) {
+				index += 2
+			}
+
+			continue
+		}
+
+		result.WriteByte(current)
+		index++
+	}
+
+	return result.String()
+}
+
 func beginQuery(state *ConnState, protocolMode, sql, statementName, portalName string) {
 	queryUID := fmt.Sprintf("QUERY-%d", time.Now().UnixNano())
 	started := time.Now()
+	classification := classifySQL(sql)
 
 	state.mu.Lock()
 	state.currentQuery = &CurrentQuery{
@@ -677,6 +924,9 @@ func beginQuery(state *ConnState, protocolMode, sql, statementName, portalName s
 		"protocol_mode":     protocolMode,
 		"statement_name":    statementName,
 		"portal_name":       portalName,
+		"query_type":        classification.StatementType,
+		"risk_level":        classification.RiskLevel,
+		"risk_reasons":      classification.Reasons,
 		"query_text_masked": maskSQL(sql),
 		"query_hash":        sha256hex(sql),
 		"status":            "running",
@@ -722,9 +972,12 @@ func finalizeCurrentQuery(state *ConnState) {
 	ended := time.Now()
 	durationMs := ended.Sub(q.StartedAt).Milliseconds()
 	status := q.Status
+
 	if status == "" || status == "running" {
 		status = "success"
 	}
+
+	classification := classifySQL(q.SQL)
 
 	payload := map[string]any{
 		"session_uid":       state.SessionUID,
@@ -732,6 +985,9 @@ func finalizeCurrentQuery(state *ConnState) {
 		"query_uid":         q.UID,
 		"db_engine":         state.DBEngine,
 		"protocol_mode":     "adapter_final",
+		"query_type":        classification.StatementType,
+		"risk_level":        classification.RiskLevel,
+		"risk_reasons":      classification.Reasons,
 		"query_text_masked": maskSQL(q.SQL),
 		"query_hash":        sha256hex(q.SQL),
 		"status":            status,
@@ -744,9 +1000,11 @@ func finalizeCurrentQuery(state *ConnState) {
 	if q.Rows != nil {
 		payload["rows_affected"] = *q.Rows
 	}
+
 	if q.ErrorCode != "" {
 		payload["error_code"] = q.ErrorCode
 	}
+
 	if q.ErrorMsg != "" {
 		payload["error_message_masked"] = q.ErrorMsg
 	}

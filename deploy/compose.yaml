@@ -1,0 +1,168 @@
+name: sag-db-access-gateway-ce
+
+x-app-environment: &app-environment
+  APP_NAME: "SAG DB Access Gateway CE"
+  APP_ENV: production
+  APP_DEBUG: "false"
+  APP_KEY: ${SAG_CE_APP_KEY}
+  APP_URL: ${SAG_CE_PUBLIC_URL}
+  APP_LOCALE: uk
+  APP_FALLBACK_LOCALE: uk
+  LOG_CHANNEL: stack
+  LOG_STACK: single
+  LOG_LEVEL: info
+
+  SAG_EDITION: ce
+  SAG_INTERNAL_TOKEN: ${SAG_CE_INTERNAL_TOKEN}
+  SAG_GATEWAY_CONTROL_PLANE_URL: http://nginx
+  SAG_DB_GATEWAY_BINARY: /usr/local/bin/sag-db-gateway
+  SAG_DB_GATEWAY_LOG_DIR: /var/lib/sag/db-gateway/logs
+  SAG_DB_GATEWAY_LISTEN_HOST: 0.0.0.0
+  SAG_DB_GATEWAY_PUBLIC_HOST: ${SAG_CE_GATEWAY_PUBLIC_HOST}
+  SAG_DB_GATEWAY_PORT_MIN: ${SAG_CE_DB_GATEWAY_PORT_MIN}
+  SAG_DB_GATEWAY_PORT_MAX: ${SAG_CE_DB_GATEWAY_PORT_MAX}
+  SAG_DB_TERMINATION_DRIVER: artisan
+  SAG_DB_MAINTENANCE_SCHEDULE_ENABLED: "true"
+
+  DB_CONNECTION: pgsql
+  DB_HOST: postgres
+  DB_PORT: "5432"
+  DB_DATABASE: ${SAG_CE_POSTGRES_DB}
+  DB_USERNAME: ${SAG_CE_POSTGRES_USER}
+  DB_PASSWORD: ${SAG_CE_POSTGRES_PASSWORD}
+
+  CACHE_STORE: redis
+  SESSION_DRIVER: file
+  SESSION_SECURE_COOKIE: ${SAG_CE_SESSION_SECURE_COOKIE}
+  SESSION_SAME_SITE: lax
+  QUEUE_CONNECTION: sync
+
+  REDIS_CLIENT: phpredis
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  REDIS_PASSWORD: ${SAG_CE_REDIS_PASSWORD}
+  REDIS_DB: "0"
+  REDIS_CACHE_DB: "1"
+
+  MAIL_MAILER: log
+  MAIL_FROM_ADDRESS: ${SAG_CE_MAIL_FROM_ADDRESS}
+  MAIL_FROM_NAME: "SAG DB Access Gateway CE"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${SAG_CE_POSTGRES_DB}
+      POSTGRES_USER: ${SAG_CE_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${SAG_CE_POSTGRES_PASSWORD}
+    volumes:
+      - sag_db_ce_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    networks:
+      - sag_internal
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command:
+      [
+        "redis-server",
+        "--appendonly",
+        "yes",
+        "--requirepass",
+        "${SAG_CE_REDIS_PASSWORD}",
+      ]
+    volumes:
+      - sag_db_ce_redis_data:/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    environment:
+      REDIS_PASSWORD: ${SAG_CE_REDIS_PASSWORD}
+    networks:
+      - sag_internal
+
+  app:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+      target: runtime
+    restart: unless-stopped
+    working_dir: /var/www/html
+    environment: *app-environment
+    volumes:
+      - sag_db_ce_storage:/var/www/html/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - sag_internal
+
+  worker:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+      target: runtime
+    restart: unless-stopped
+    init: true
+    working_dir: /var/www/html
+    command: ["/usr/local/bin/sag-ce-worker"]
+    environment: *app-environment
+    volumes:
+      - sag_db_ce_storage:/var/www/html/storage
+      - sag_db_ce_gateway_logs:/var/lib/sag/db-gateway
+    ports:
+      - "${SAG_CE_DB_GATEWAY_PORT_MIN}-${SAG_CE_DB_GATEWAY_PORT_MAX}:${SAG_CE_DB_GATEWAY_PORT_MIN}-${SAG_CE_DB_GATEWAY_PORT_MAX}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    stop_grace_period: 45s
+    networks:
+      - sag_internal
+
+
+  nginx:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+      target: nginx
+    restart: unless-stopped
+    environment:
+      SAG_CE_DOCKER_SUBNET: ${SAG_CE_DOCKER_SUBNET}
+    ports:
+      - "${SAG_CE_HTTP_BIND}:${SAG_CE_HTTP_PORT}:80"
+    depends_on:
+      - app
+    networks:
+      - sag_internal
+
+networks:
+  sag_internal:
+    ipam:
+      config:
+        - subnet: ${SAG_CE_DOCKER_SUBNET}
+
+volumes:
+  sag_db_ce_postgres_data:
+  sag_db_ce_redis_data:
+  sag_db_ce_storage:
+  sag_db_ce_gateway_logs:

@@ -13,7 +13,12 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        $middleware->trustProxies(at: '*');
+
+        $middleware->alias([
+            'ce.admin' => \App\Http\Middleware\EnsureCeAdmin::class,
+            'ce.mfa' => \App\Http\Middleware\EnsureCeMfa::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

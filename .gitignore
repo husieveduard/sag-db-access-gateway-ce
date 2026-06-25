@@ -43,3 +43,12 @@ Thumbs.db
 /control-plane/public/hot
 /control-plane/public/build
 /control-plane/database/*.sqlite
+
+# Local engineering backups and deployment work files
+/control-plane/.work/
+/deploy/.env
+/data/
+
+# Local editor backups and legacy local runtime files
+*~
+/compose.yml
