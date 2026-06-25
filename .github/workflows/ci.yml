@@ -1,0 +1,101 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    name: Public repository preflight
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate public repository content
+        run: ./scripts/preflight-public.sh
+
+  php:
+    name: PHP and Laravel lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: bcmath, mbstring, pcntl, pdo_pgsql, redis, zip
+          coverage: none
+
+      - name: Validate Composer metadata
+        working-directory: control-plane
+        run: composer validate --no-check-publish
+
+      - name: Install PHP dependencies
+        working-directory: control-plane
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Prepare Laravel environment
+        working-directory: control-plane
+        run: |
+          cp .env.example .env
+          php artisan key:generate --force
+
+      - name: Lint PHP files
+        working-directory: control-plane
+        run: |
+          find \
+            app \
+            bootstrap \
+            config \
+            database/migrations \
+            routes \
+            -type f \
+            -name '*.php' \
+            -print0 \
+          | xargs -0 -r -n1 php -l
+
+      - name: Validate application routes
+        working-directory: control-plane
+        run: |
+          php artisan route:list --name=login
+          php artisan route:list --name=mfa
+
+  go:
+    name: Go gateway tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.x'
+
+      - name: Run gateway tests
+        working-directory: db-gateway
+        run: go test ./...
+
+  docker:
+    name: Docker build
+    needs:
+      - preflight
+      - php
+      - go
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build production images
+        run: |
+          docker compose \
+            --project-directory "$PWD" \
+            --env-file deploy/.env.example \
+            -f deploy/compose.yaml \
+            build app worker nginx

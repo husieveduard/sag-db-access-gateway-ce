@@ -28,3 +28,27 @@
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Public CE Laravel control plane
+/control-plane/.env
+/control-plane/.env.*
+!/control-plane/.env.example
+/control-plane/vendor/
+/control-plane/node_modules/
+/control-plane/bootstrap/cache/*
+!/control-plane/bootstrap/cache/.gitignore
+/control-plane/storage/logs/*
+/control-plane/storage/framework/*
+!/control-plane/storage/framework/.gitignore
+/control-plane/public/hot
+/control-plane/public/build
+/control-plane/database/*.sqlite
+
+# Local engineering backups and deployment work files
+/control-plane/.work/
+/deploy/.env
+/data/
+
+# Local editor backups and legacy local runtime files
+*~
+/compose.yml
