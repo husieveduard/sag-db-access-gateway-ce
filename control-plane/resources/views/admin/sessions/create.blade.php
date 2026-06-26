@@ -1,118 +1,39 @@
 @extends('layouts.app')
 
-@section('title', 'Створити session · SAG DB Access Gateway CE')
-
-@push('styles')
-<style>
-    .back-link {
-        display: inline-block;
-        margin-bottom: 18px;
-        color: var(--blue);
-    }
-    .form-card {
-        width: min(820px, 100%);
-        padding: 24px;
-    }
-    .form-grid {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 16px;
-    }
-    .full { grid-column: 1 / -1; }
-    label {
-        display: block;
-        margin-bottom: 7px;
-        color: var(--muted);
-        font-size: 12px;
-        font-weight: 700;
-        text-transform: uppercase;
-    }
-    input, select {
-        width: 100%;
-        padding: 10px 11px;
-        color: var(--text);
-        background: #0d1726;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        outline: none;
-    }
-    input:focus, select:focus { border-color: var(--blue); }
-    .field-error {
-        margin-top: 6px;
-        color: #ffc2c2;
-        font-size: 13px;
-    }
-    .hint {
-        margin-top: 7px;
-        color: var(--muted);
-        font-size: 13px;
-        line-height: 1.45;
-    }
-    .mode-note {
-        margin-top: 8px;
-        padding: 10px 12px;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        color: #c6d7eb;
-        background: rgba(255,255,255,.02);
-        font-size: 13px;
-        line-height: 1.45;
-    }
-    .submit-row {
-        display: flex;
-        gap: 12px;
-        align-items: center;
-        margin-top: 22px;
-    }
-    .button {
-        min-height: 39px;
-        padding: 9px 13px;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        color: var(--text);
-        background: transparent;
-        cursor: pointer;
-        font-weight: 700;
-    }
-    .button.primary {
-        border-color: rgba(90,169,255,.55);
-        color: #d9ebff;
-        background: rgba(90,169,255,.13);
-    }
-    .button:hover { border-color: var(--blue); }
-    @media (max-width: 650px) {
-        .form-grid { grid-template-columns: 1fr; }
-    }
-</style>
-@endpush
+@section('title', __('sessions.create_page.title').' · '.__('ce.app_title'))
 
 @section('content')
+@php
+    $modeNotes = [
+        'temporary' => __('sessions.create_page.mode_notes.temporary'),
+        'persistent' => __('sessions.create_page.mode_notes.persistent'),
+    ];
+@endphp
+
 <a class="back-link" href="{{ route('admin.sessions.index') }}">
-    ← До списку sessions
+    {{ __('sessions.create_page.back') }}
 </a>
 
-<h1 class="page-title">Створити DB session</h1>
-<p class="subtitle">
-    Створення доступу до вибраного DB resource. Gateway стартує окремою дією після створення.
-</p>
+<h1 class="page-title">{{ __('sessions.create_page.heading') }}</h1>
+
+<p class="subtitle">{{ __('sessions.create_page.subtitle') }}</p>
 
 @if ($resources->isEmpty())
     <div class="form-error">
-        Немає активних DB resources. Спочатку створи resource.
+        {{ __('sessions.create_page.no_resources') }}
     </div>
 @else
-    <form
-        class="card form-card"
-        method="POST"
-        action="{{ route('admin.sessions.store') }}"
-    >
+    <form class="card form-card" method="POST" action="{{ route('admin.sessions.store') }}">
         @csrf
 
         <div class="form-grid">
             <div class="full">
-                <label for="resource_id">DB resource</label>
+                <label for="resource_id">{{ __('sessions.create_page.resource') }}</label>
+
                 <select id="resource_id" name="resource_id" required autofocus>
-                    <option value="">Оберіть resource</option>
+                    <option value="">
+                        {{ __('sessions.create_page.resource_placeholder') }}
+                    </option>
 
                     @foreach ($resources as $resource)
                         <option
@@ -135,13 +56,21 @@
             </div>
 
             <div>
-                <label for="mode">Тип підключення</label>
+                <label for="mode">{{ __('sessions.create_page.connection_mode') }}</label>
+
                 <select id="mode" name="mode" required>
-                    <option value="temporary" @selected(old('mode', 'temporary') === 'temporary')>
-                        Temporary — з TTL
+                    <option
+                        value="temporary"
+                        @selected(old('mode', 'temporary') === 'temporary')
+                    >
+                        {{ __('sessions.create_page.temporary_option') }}
                     </option>
-                    <option value="persistent" @selected(old('mode') === 'persistent')>
-                        Persistent — до ручного завершення
+
+                    <option
+                        value="persistent"
+                        @selected(old('mode') === 'persistent')
+                    >
+                        {{ __('sessions.create_page.persistent_option') }}
                     </option>
                 </select>
 
@@ -153,7 +82,8 @@
             </div>
 
             <div id="ttl-wrap">
-                <label for="ttl_seconds">TTL, секунд</label>
+                <label for="ttl_seconds">{{ __('sessions.create_page.ttl') }}</label>
+
                 <input
                     id="ttl_seconds"
                     name="ttl_seconds"
@@ -162,9 +92,8 @@
                     max="604800"
                     value="{{ old('ttl_seconds', 3600) }}"
                 >
-                <div class="hint">
-                    Від 60 секунд до 7 днів. Після TTL gateway і активні підключення будуть примусово завершені.
-                </div>
+
+                <div class="hint">{{ __('sessions.create_page.ttl_hint') }}</div>
 
                 @error('ttl_seconds')
                     <div class="field-error">{{ $message }}</div>
@@ -172,7 +101,8 @@
             </div>
 
             <div>
-                <label for="source_cidr">Source IP / CIDR</label>
+                <label for="source_cidr">{{ __('sessions.create_page.source_cidr') }}</label>
+
                 <input
                     id="source_cidr"
                     name="source_cidr"
@@ -182,8 +112,9 @@
                     placeholder="10.10.10.1/32"
                     required
                 >
+
                 <div class="hint">
-                    З якої IP-адреси або CIDR дозволене підключення до gateway.
+                    {{ __('sessions.create_page.source_cidr_hint') }}
                 </div>
 
                 @error('source_cidr')
@@ -192,7 +123,8 @@
             </div>
 
             <div>
-                <label for="db_username">DB username</label>
+                <label for="db_username">{{ __('sessions.create_page.db_username') }}</label>
+
                 <input
                     id="db_username"
                     name="db_username"
@@ -202,8 +134,9 @@
                     placeholder="db_readonly_user"
                     required
                 >
+
                 <div class="hint">
-                    Використовується лише для аудиту. Пароль БД не зберігається.
+                    {{ __('sessions.create_page.db_username_hint') }}
                 </div>
 
                 @error('db_username')
@@ -213,17 +146,19 @@
         </div>
 
         <div class="hint">
-            Нова session створюється у статусі <code>created</code>.
-            Щоб відкрити gateway endpoint і виділити порт, на сторінці session натисни <code>Start session</code>.
+            {{ __('sessions.create_page.created_note') }}
+            <code>{{ __('sessions.status.created') }}</code>.
+            {{ __('sessions.create_page.created_action') }}
+            <code>{{ __('sessions.create_page.start_session') }}</code>.
         </div>
 
         <div class="submit-row">
             <button class="button primary" type="submit">
-                Створити session
+                {{ __('sessions.create_page.submit') }}
             </button>
 
             <a class="button" href="{{ route('admin.sessions.index') }}">
-                Скасувати
+                {{ __('sessions.create_page.cancel') }}
             </a>
         </div>
     </form>
@@ -235,6 +170,7 @@
     const ttlWrap = document.getElementById('ttl-wrap');
     const ttl = document.getElementById('ttl_seconds');
     const note = document.getElementById('mode-note');
+    const modeNotes = @json($modeNotes);
 
     if (!mode || !ttlWrap || !ttl || !note) {
         return;
@@ -245,10 +181,9 @@
 
         ttlWrap.hidden = !temporary;
         ttl.required = temporary;
-
         note.textContent = temporary
-            ? 'Temporary: сесія автоматично завершиться після TTL. Gateway, активні DB connections і запити будуть примусово закриті.'
-            : 'Persistent: TTL не встановлюється. Сесія працює до ручного Terminate / Revoke.';
+            ? modeNotes.temporary
+            : modeNotes.persistent;
     };
 
     mode.addEventListener('change', syncMode);

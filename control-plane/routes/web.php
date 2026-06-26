@@ -6,10 +6,23 @@ use App\Http\Controllers\Admin\ResourceController;
 use App\Http\Controllers\Admin\SessionController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\MfaController;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', fn () => redirect()->route('admin.dashboard'))
     ->name('home');
+
+Route::post('/locale/{locale}', function (
+    Request $request,
+    string $locale,
+) {
+    abort_unless(in_array($locale, ['uk', 'en'], true), 404);
+
+    $request->session()->put('locale', $locale);
+
+    return back();
+})->middleware('throttle:30,1')
+    ->name('locale.update');
 
 Route::get('/login', [LoginController::class, 'create'])
     ->name('login');

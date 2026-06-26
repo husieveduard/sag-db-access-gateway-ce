@@ -1,129 +1,68 @@
 @extends('layouts.app')
 
-@section('title', 'Resource · SAG DB Access Gateway CE')
-
-@push('styles')
-<style>
-    .back-link {
-        display: inline-block;
-        margin-bottom: 18px;
-        color: var(--blue);
-    }
-
-    .summary {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 16px;
-        margin-bottom: 24px;
-    }
-
-    .summary-card { padding: 16px; }
-
-    .summary-label {
-        color: var(--muted);
-        font-size: 12px;
-        font-weight: 700;
-        text-transform: uppercase;
-    }
-
-    .summary-value {
-        margin-top: 8px;
-        overflow-wrap: anywhere;
-        font-size: 15px;
-        font-weight: 700;
-    }
-
-    .actions {
-        display: flex;
-        gap: 14px;
-        flex-wrap: wrap;
-        align-items: flex-start;
-        padding: 18px;
-    }
-
-    .action-block { min-width: 290px; }
-
-    .action-title {
-        margin-bottom: 9px;
-        font-weight: 750;
-    }
-
-    .section { margin-top: 24px; }
-
-    .section-title {
-        margin: 0 0 11px;
-        font-size: 18px;
-    }
-
-    .button {
-        display: inline-block;
-        min-height: 38px;
-        padding: 9px 13px;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        color: var(--text);
-        background: transparent;
-        cursor: pointer;
-        font-weight: 700;
-    }
-
-    .button:hover { border-color: var(--blue); }
-
-    .button.primary {
-        border-color: rgba(90,169,255,.55);
-        color: #d9ebff;
-        background: rgba(90,169,255,.12);
-    }
-
-    .button.deactivate {
-        border-color: rgba(243,107,107,.55);
-        color: var(--red);
-    }
-
-    .button.activate {
-        border-color: rgba(54,198,145,.55);
-        color: var(--green);
-    }
-
-    input {
-        width: 100%;
-        min-height: 38px;
-        padding: 8px 10px;
-        color: var(--text);
-        background: #0d1726;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-    }
-
-    .notice {
-        margin-top: 8px;
-        color: var(--muted);
-        font-size: 13px;
-        line-height: 1.45;
-    }
-
-    .endpoint {
-        color: #c6d7eb;
-        font-family: ui-monospace, Consolas, monospace;
-    }
-
-    @media (max-width: 900px) {
-        .summary { grid-template-columns: 1fr; }
-    }
-</style>
-@endpush
+@section('title', __('resources.show.title').' · '.__('ce.app_title'))
 
 @section('content')
+@php
+    $notAvailable = __('ce.common.not_available');
+
+    $engineLabels = [
+        'mysql' => __('resources.engine.mysql'),
+        'postgresql' => __('resources.engine.postgresql'),
+        'mssql' => __('resources.engine.mssql'),
+    ];
+
+    $tlsLabels = [
+        'prefer' => __('resources.tls.prefer'),
+        'require' => __('resources.tls.require'),
+        'disable' => __('resources.tls.disable'),
+        'verify_ca' => __('resources.tls.verify_ca'),
+        'verify_full' => __('resources.tls.verify_full'),
+    ];
+
+    $authLabels = [
+        'client_passthrough' => __('resources.auth.client_passthrough'),
+        'managed' => __('resources.auth.managed'),
+    ];
+
+    $sessionModeLabels = [
+        'temporary' => __('sessions.mode.temporary'),
+        'persistent' => __('sessions.mode.persistent'),
+    ];
+
+    $sessionStatusLabels = [
+        'created' => __('sessions.status.created'),
+        'starting' => __('sessions.status.starting'),
+        'started' => __('sessions.status.started'),
+        'ended' => __('sessions.status.ended'),
+        'terminated' => __('sessions.status.terminated'),
+        'expired' => __('sessions.status.expired'),
+        'failed' => __('sessions.status.failed'),
+    ];
+
+    $severityLabels = [
+        'info' => __('resources.show.audit_events.severity.info'),
+        'medium' => __('resources.show.audit_events.severity.medium'),
+        'high' => __('resources.show.audit_events.severity.high'),
+        'critical' => __('resources.show.audit_events.severity.critical'),
+    ];
+@endphp
+
 <a class="back-link" href="{{ route('admin.resources.index') }}">
-    ← До списку resources
+    {{ __('resources.show.back') }}
 </a>
 
 <h1 class="page-title">{{ $resource->name }}</h1>
 
 <p class="subtitle">
-    <span class="badge">{{ $resource->engine }}</span>
+    <span class="badge">
+        {{ $engineLabels[$resource->engine] ?? $resource->engine }}
+    </span>
+
     <span class="badge {{ $resource->is_active ? 'green' : 'red' }}">
-        {{ $resource->is_active ? 'active' : 'inactive' }}
+        {{ $resource->is_active
+            ? __('resources.status.active')
+            : __('resources.status.inactive') }}
     </span>
 </p>
 
@@ -133,59 +72,79 @@
 
 <section class="summary">
     <div class="card summary-card">
-        <div class="summary-label">Target</div>
+        <div class="summary-label">{{ __('resources.show.summary.target') }}</div>
+
         <div class="summary-value endpoint">
             {{ $resource->target_host }}:{{ $resource->target_port }}<br>
+
             <span class="muted">
-                {{ $resource->target_database ?: 'database not specified' }}
+                {{ $resource->target_database
+                    ?: __('resources.show.summary.database_not_specified') }}
             </span>
         </div>
     </div>
 
     <div class="card summary-card">
-        <div class="summary-label">Access policy</div>
+        <div class="summary-label">
+            {{ __('resources.show.summary.access_policy') }}
+        </div>
+
         <div class="summary-value">
-            {{ $resource->auth_mode }}<br>
-            <span class="muted">TLS: {{ $resource->target_tls_mode }}</span>
+            {{ $authLabels[$resource->auth_mode] ?? $resource->auth_mode }}<br>
+
+            <span class="muted">
+                {{ __('resources.show.summary.tls') }}:
+                {{ $tlsLabels[$resource->target_tls_mode]
+                    ?? $resource->target_tls_mode }}
+            </span>
         </div>
     </div>
 
     <div class="card summary-card">
-        <div class="summary-label">SQL audit</div>
+        <div class="summary-label">
+            {{ __('resources.show.summary.sql_audit') }}
+        </div>
+
         <div class="summary-value">
             <span class="badge {{ $resource->query_audit_enabled ? 'green' : 'red' }}">
-                {{ $resource->query_audit_enabled ? 'enabled' : 'disabled' }}
+                {{ $resource->query_audit_enabled
+                    ? __('resources.audit.enabled')
+                    : __('resources.audit.disabled') }}
             </span>
         </div>
     </div>
 
     <div class="card summary-card">
-        <div class="summary-label">Sessions</div>
+        <div class="summary-label">{{ __('resources.show.summary.sessions') }}</div>
         <div class="summary-value">{{ $resource->sessions_count }}</div>
     </div>
 
     <div class="card summary-card">
-        <div class="summary-label">Active gateways</div>
+        <div class="summary-label">
+            {{ __('resources.show.summary.active_gateways') }}
+        </div>
+
         <div class="summary-value">{{ $resource->active_sessions_count }}</div>
     </div>
 
     <div class="card summary-card">
-        <div class="summary-label">Open DB connections</div>
+        <div class="summary-label">
+            {{ __('resources.show.summary.open_db_connections') }}
+        </div>
+
         <div class="summary-value">{{ $resource->open_connections_count }}</div>
     </div>
 </section>
 
 <section class="card actions">
     <div class="action-block">
-        <div class="action-title">Редагування resource</div>
+        <div class="action-title">{{ __('resources.show.edit.heading') }}</div>
 
         <a class="button primary" href="{{ route('admin.resources.edit', $resource) }}">
-            Редагувати
+            {{ __('resources.show.edit.action') }}
         </a>
 
-        <div class="notice">
-            Зміна engine або target заблокована, поки існує active gateway session.
-        </div>
+        <div class="notice">{{ __('resources.show.edit.notice') }}</div>
     </div>
 
     @if ($resource->is_active)
@@ -193,29 +152,31 @@
             class="action-block"
             method="POST"
             action="{{ route('admin.resources.deactivate', $resource) }}"
-            onsubmit="return confirm('Деактивувати resource? Нові sessions і Start для created sessions будуть заблоковані.');"
+            onsubmit="return confirm(@js(__('resources.show.deactivate.confirm')));"
         >
             @csrf
 
-            <div class="action-title">Deactivate resource</div>
+            <div class="action-title">
+                {{ __('resources.show.deactivate.heading') }}
+            </div>
 
             <input
                 name="reason"
                 type="text"
                 minlength="3"
                 maxlength="255"
-                placeholder="Причина деактивації"
+                placeholder="{{ __('resources.show.deactivate.placeholder') }}"
                 required
             >
 
-            <div style="margin-top:9px">
+            <div class="mt-9">
                 <button class="button deactivate" type="submit">
-                    Deactivate
+                    {{ __('resources.show.deactivate.action') }}
                 </button>
             </div>
 
             <div class="notice">
-                Уже запущені gateway sessions не обриваються автоматично.
+                {{ __('resources.show.deactivate.notice') }}
             </div>
         </form>
     @else
@@ -223,24 +184,26 @@
             class="action-block"
             method="POST"
             action="{{ route('admin.resources.activate', $resource) }}"
-            onsubmit="return confirm('Активувати resource і дозволити нові sessions?');"
+            onsubmit="return confirm(@js(__('resources.show.activate.confirm')));"
         >
             @csrf
 
-            <div class="action-title">Activate resource</div>
+            <div class="action-title">
+                {{ __('resources.show.activate.heading') }}
+            </div>
 
             <input
                 name="reason"
                 type="text"
                 minlength="3"
                 maxlength="255"
-                placeholder="Причина активації"
+                placeholder="{{ __('resources.show.activate.placeholder') }}"
                 required
             >
 
-            <div style="margin-top:9px">
+            <div class="mt-9">
                 <button class="button activate" type="submit">
-                    Activate
+                    {{ __('resources.show.activate.action') }}
                 </button>
             </div>
         </form>
@@ -248,19 +211,19 @@
 </section>
 
 <section class="section">
-    <h2 class="section-title">Останні gateway sessions</h2>
+    <h2 class="section-title">{{ __('resources.show.sessions.heading') }}</h2>
 
     <div class="card table-wrap">
         <table>
             <thead>
                 <tr>
-                    <th>Session</th>
-                    <th>Owner</th>
-                    <th>Mode / status</th>
-                    <th>Gateway</th>
-                    <th>Source CIDR</th>
-                    <th>Connections</th>
-                    <th>Created</th>
+                    <th>{{ __('resources.show.sessions.columns.session') }}</th>
+                    <th>{{ __('resources.show.sessions.columns.owner') }}</th>
+                    <th>{{ __('resources.show.sessions.columns.mode_status') }}</th>
+                    <th>{{ __('resources.show.sessions.columns.gateway') }}</th>
+                    <th>{{ __('resources.show.sessions.columns.source_cidr') }}</th>
+                    <th>{{ __('resources.show.sessions.columns.connections') }}</th>
+                    <th>{{ __('resources.show.sessions.columns.created') }}</th>
                 </tr>
             </thead>
 
@@ -272,6 +235,13 @@
                             ['terminated', 'expired', 'ended', 'failed'],
                             true
                         );
+
+                        $statusClass = match ($session->status) {
+                            'started' => 'green',
+                            'starting', 'created' => 'yellow',
+                            'terminated', 'expired', 'failed', 'ended' => 'red',
+                            default => '',
+                        };
                     @endphp
 
                     <tr>
@@ -280,17 +250,27 @@
                                 <code>{{ $session->public_id }}</code>
                             </a>
                         </td>
-                        <td>{{ $session->owner?->name ?? '—' }}</td>
+
+                        <td>{{ $session->owner?->name ?? $notAvailable }}</td>
+
                         <td>
-                            <span class="badge">{{ $session->mode }}</span>
-                            <span class="badge {{ $terminal ? 'red' : ($session->status === 'started' ? 'green' : 'yellow') }}">
-                                {{ $session->status }}
+                            <span class="badge">
+                                {{ $sessionModeLabels[$session->mode] ?? $session->mode }}
+                            </span>
+
+                            <span class="badge {{ $statusClass }}">
+                                {{ $sessionStatusLabels[$session->status]
+                                    ?? $session->status }}
                             </span>
                         </td>
+
                         <td class="endpoint">
                             @if ($session->gateway_host && $session->gateway_port)
                                 @if ($terminal)
-                                    <span class="badge red">released</span><br>
+                                    <span class="badge red">
+                                        {{ __('resources.show.sessions.released') }}
+                                    </span><br>
+
                                     <span class="muted">
                                         {{ $session->gateway_host }}:{{ $session->gateway_port }}
                                     </span>
@@ -298,17 +278,18 @@
                                     {{ $session->gateway_host }}:{{ $session->gateway_port }}
                                 @endif
                             @else
-                                —
+                                {{ $notAvailable }}
                             @endif
                         </td>
-                        <td>{{ $session->allowed_source_cidr ?? '—' }}</td>
+
+                        <td>{{ $session->allowed_source_cidr ?? $notAvailable }}</td>
                         <td>{{ $session->open_connections_count }}</td>
-                        <td>{{ $session->created_at?->format('d.m.Y H:i:s') ?? '—' }}</td>
+                        <td>{{ $session->created_at?->format('d.m.Y H:i:s') ?? $notAvailable }}</td>
                     </tr>
                 @empty
                     <tr>
                         <td colspan="7" class="muted">
-                            Sessions для цього resource відсутні.
+                            {{ __('resources.show.sessions.empty') }}
                         </td>
                     </tr>
                 @endforelse
@@ -318,38 +299,57 @@
 </section>
 
 <section class="section">
-    <h2 class="section-title">Audit events</h2>
+    <h2 class="section-title">{{ __('resources.show.audit_events.heading') }}</h2>
 
     <div class="card table-wrap">
         <table>
             <thead>
                 <tr>
-                    <th>Time</th>
-                    <th>Event</th>
-                    <th>Severity</th>
-                    <th>Actor</th>
-                    <th>IP</th>
-                    <th>Data</th>
+                    <th>{{ __('resources.show.audit_events.columns.time') }}</th>
+                    <th>{{ __('resources.show.audit_events.columns.event') }}</th>
+                    <th>{{ __('resources.show.audit_events.columns.severity') }}</th>
+                    <th>{{ __('resources.show.audit_events.columns.actor') }}</th>
+                    <th>{{ __('resources.show.audit_events.columns.ip') }}</th>
+                    <th>{{ __('resources.show.audit_events.columns.data') }}</th>
                 </tr>
             </thead>
 
             <tbody>
                 @forelse ($auditEvents as $event)
                     <tr>
-                        <td>{{ $event->occurred_at?->format('d.m.Y H:i:s') ?? '—' }}</td>
+                        <td>{{ $event->occurred_at?->format('d.m.Y H:i:s') ?? $notAvailable }}</td>
                         <td><code>{{ $event->event_type }}</code></td>
-                        <td><span class="badge">{{ $event->severity }}</span></td>
-                        <td>{{ $event->actor?->name ?? 'system' }}</td>
-                        <td>{{ $event->ip_address ?? '—' }}</td>
+
+                        <td>
+                            <span class="badge">
+                                {{ $severityLabels[$event->severity] ?? $event->severity }}
+                            </span>
+                        </td>
+
+                        <td>
+                            {{ $event->actor?->name
+                                ?? __('resources.show.audit_events.system') }}
+                        </td>
+
+                        <td>{{ $event->ip_address ?? $notAvailable }}</td>
+
                         <td>
                             <code title="{{ json_encode($event->event_data) }}">
-                                {{ \Illuminate\Support\Str::limit(json_encode($event->event_data, JSON_UNESCAPED_UNICODE), 200) }}
+                                {{ \Illuminate\Support\Str::limit(
+                                    json_encode(
+                                        $event->event_data,
+                                        JSON_UNESCAPED_UNICODE
+                                    ),
+                                    200
+                                ) }}
                             </code>
                         </td>
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="6" class="muted">Audit events відсутні.</td>
+                        <td colspan="6" class="muted">
+                            {{ __('resources.show.audit_events.empty') }}
+                        </td>
                     </tr>
                 @endforelse
             </tbody>
