@@ -87,7 +87,7 @@ class ResourceController extends Controller
 
         return redirect()
             ->route('admin.resources.show', $resource)
-            ->with('success', "DB resource «{$resource->name}» створено.");
+            ->with('success', __('messages.resources.created', ['name' => $resource->name]));
     }
 
     public function show(DatabaseResource $resource): View
@@ -176,7 +176,7 @@ class ResourceController extends Controller
 
                 if ($targetChanged && $activeGatewaySessions > 0) {
                     throw new DomainException(
-                        'Неможливо змінити engine або target, поки існують активні gateway sessions.'
+                        __('messages.resources.target_change_blocked')
                     );
                 }
 
@@ -224,7 +224,7 @@ class ResourceController extends Controller
 
         return redirect()
             ->route('admin.resources.show', $resource)
-            ->with('success', 'DB resource оновлено.');
+            ->with('success', __('messages.resources.updated'));
     }
 
     public function deactivate(
@@ -243,7 +243,7 @@ class ResourceController extends Controller
                     ->firstOrFail();
 
                 if (!$locked->is_active) {
-                    throw new DomainException('Resource уже деактивований.');
+                    throw new DomainException(__('messages.resources.already_deactivated'));
                 }
 
                 $activeGatewaySessions = DbAccessSession::query()
@@ -283,7 +283,7 @@ class ResourceController extends Controller
 
         return redirect()
             ->route('admin.resources.show', $resource)
-            ->with('success', 'Resource деактивовано.');
+            ->with('success', __('messages.resources.deactivated'));
     }
 
     public function activate(
@@ -302,7 +302,7 @@ class ResourceController extends Controller
                     ->firstOrFail();
 
                 if ($locked->is_active) {
-                    throw new DomainException('Resource уже активний.');
+                    throw new DomainException(__('messages.resources.already_active'));
                 }
 
                 $locked->forceFill([
@@ -335,7 +335,7 @@ class ResourceController extends Controller
 
         return redirect()
             ->route('admin.resources.show', $resource)
-            ->with('success', 'Resource активовано.');
+            ->with('success', __('messages.resources.activated'));
     }
 
     private function validateResource(
@@ -363,7 +363,7 @@ class ResourceController extends Controller
                         $host === ''
                         || preg_match('/[\s\/\\\\:@?#]/', $host)
                     ) {
-                        $fail('Вкажіть IP-адресу або DNS-ім’я без протоколу, порту чи шляху.');
+                        $fail(__('messages.resources.invalid_host_format'));
 
                         return;
                     }
@@ -380,7 +380,7 @@ class ResourceController extends Controller
                         return;
                     }
 
-                    $fail('Вкажіть коректне DNS-ім’я або IP-адресу.');
+                    $fail(__('messages.resources.invalid_host'));
                 },
             ],
             'target_port' => ['required', 'integer', 'between:1,65535'],

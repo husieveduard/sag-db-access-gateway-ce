@@ -1,15 +1,14 @@
 @extends('layouts.app')
 
-@section('title', 'Recovery codes · SAG DB Access Gateway CE')
+@section('title', __('auth.mfa_recovery.title').' · '.__('ce.app_title'))
 
 @section('content')
 <div class="shell">
     <section class="card-main">
-        <h1>Recovery codes</h1>
+        <h1>{{ __('auth.mfa_recovery.heading') }}</h1>
 
         <div class="warning">
-            Збережіть ці коди у захищеному місці. Вони показуються лише один раз.
-            Кожен код можна використати лише один раз.
+            {{ __('auth.mfa_recovery.warning') }}
         </div>
 
         <div class="codes">
@@ -22,7 +21,7 @@
             @csrf
 
             <button class="submit" type="submit">
-                Я зберіг recovery codes
+                {{ __('auth.mfa_recovery.submit') }}
             </button>
         </form>
     </section>

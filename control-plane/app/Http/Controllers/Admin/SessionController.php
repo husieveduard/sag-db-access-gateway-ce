@@ -132,7 +132,7 @@ class SessionController extends Controller
                     Closure $fail,
                 ): void {
                     if (!$this->isValidIpOrCidr((string) $value)) {
-                        $fail('Вкажіть коректну IP-адресу або CIDR, наприклад 10.10.10.1/32.');
+                        $fail(__('messages.sessions.invalid_source_cidr'));
                     }
                 },
             ],
@@ -145,7 +145,7 @@ class SessionController extends Controller
             return back()
                 ->withInput()
                 ->withErrors([
-                    'db_username' => 'Вкажіть DB username для аудиту.',
+                    'db_username' => __('messages.sessions.db_username_required'),
                 ]);
         }
 
@@ -162,7 +162,7 @@ class SessionController extends Controller
 
                 if (!$resource || !$resource->is_active) {
                     throw new DomainException(
-                        'Вибраний DB resource не існує або неактивний.'
+                        __('messages.sessions.resource_unavailable')
                     );
                 }
 
@@ -243,7 +243,7 @@ class SessionController extends Controller
             ->route('admin.sessions.show', $session)
             ->with(
                 'success',
-                "Session {$session->public_id} створено. Для відкриття gateway натисни Start session."
+                __('messages.sessions.created', ['public_id' => $session->public_id])
             );
     }
 

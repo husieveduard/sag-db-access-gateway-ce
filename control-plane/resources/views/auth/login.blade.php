@@ -1,12 +1,13 @@
 @extends('layouts.app')
 
-@section('title', 'Вхід · SAG DB Access Gateway CE')
+@section('title', __('auth.login.title').' · '.__('ce.app_title'))
 
 @section('content')
 <div class="login-shell">
     <section class="login-card">
-        <h1>SAG DB Access Gateway CE</h1>
-        <p>Локальний адміністративний доступ до DB resources, gateway sessions та SQL audit.</p>
+        <h1>{{ __('ce.app_title') }}</h1>
+
+        <p>{{ __('auth.login.description') }}</p>
 
         @if ($errors->any())
             <div class="error">{{ $errors->first() }}</div>
@@ -15,7 +16,7 @@
         <form method="POST" action="{{ route('login.store') }}">
             @csrf
 
-            <label for="email">Email</label>
+            <label for="email">{{ __('auth.login.email') }}</label>
             <input
                 id="email"
                 name="email"
@@ -26,7 +27,7 @@
                 autofocus
             >
 
-            <label for="password">Пароль</label>
+            <label for="password">{{ __('auth.login.password') }}</label>
             <input
                 id="password"
                 name="password"
@@ -35,11 +36,13 @@
                 required
             >
 
-            <button class="submit" type="submit">Увійти до консолі</button>
+            <button class="submit" type="submit">
+                {{ __('auth.login.submit') }}
+            </button>
         </form>
 
         <p class="note">
-            Доступ дозволений лише активним користувачам із роллю <code>admin</code>.
+            {{ __('auth.login.note_before') }} <code>admin</code>.
         </p>
     </section>
 </div>

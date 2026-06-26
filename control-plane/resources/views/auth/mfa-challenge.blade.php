@@ -1,15 +1,13 @@
 @extends('layouts.app')
 
-@section('title', 'MFA-підтвердження · SAG DB Access Gateway CE')
+@section('title', __('auth.mfa_challenge.title').' · '.__('ce.app_title'))
 
 @section('content')
 <div class="shell">
     <section class="card-main">
-        <h1>MFA-підтвердження</h1>
+        <h1>{{ __('auth.mfa_challenge.heading') }}</h1>
 
-        <p>
-            Введіть 6-значний TOTP-код або один із recovery codes.
-        </p>
+        <p>{{ __('auth.mfa_challenge.intro') }}</p>
 
         @if ($errors->any())
             <div class="error">{{ $errors->first() }}</div>
@@ -18,7 +16,7 @@
         <form method="POST" action="{{ route('mfa.challenge.verify') }}">
             @csrf
 
-            <label for="code">MFA / recovery code</label>
+            <label for="code">{{ __('auth.mfa_challenge.code') }}</label>
 
             <input
                 id="code"
@@ -31,12 +29,13 @@
             >
 
             <button class="submit" type="submit">
-                Підтвердити вхід
+                {{ __('auth.mfa_challenge.submit') }}
             </button>
         </form>
 
         <p class="note">
-            Operator: <code>{{ $user->email }}</code>
+            {{ __('auth.mfa_challenge.operator') }}:
+            <code>{{ $user->email }}</code>
         </p>
     </section>
 </div>
