@@ -1,65 +1,40 @@
 @extends('layouts.app')
 
-@section('title', 'Resources · SAG DB Access Gateway CE')
-
-@push('styles')
-<style>
-    .page-head {
-        display: flex;
-        align-items: flex-start;
-        justify-content: space-between;
-        gap: 18px;
-        margin-bottom: 24px;
-    }
-
-    .page-head .subtitle { margin-bottom: 0; }
-
-    .button {
-        display: inline-block;
-        min-height: 38px;
-        padding: 9px 13px;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        color: var(--text);
-        background: transparent;
-        font-weight: 700;
-    }
-
-    .button.primary {
-        border-color: rgba(90,169,255,.55);
-        color: #d9ebff;
-        background: rgba(90,169,255,.12);
-    }
-
-    .button:hover { border-color: var(--blue); }
-
-    .resource-name {
-        color: var(--blue);
-        font-weight: 750;
-    }
-
-    .endpoint {
-        color: #c6d7eb;
-        font-family: ui-monospace, Consolas, monospace;
-    }
-
-    @media (max-width: 650px) {
-        .page-head { flex-direction: column; }
-    }
-</style>
-@endpush
+@section('title', __('resources.title').' · '.__('ce.app_title'))
 
 @section('content')
+@php
+    $notAvailable = __('ce.common.not_available');
+
+    $engineLabels = [
+        'mysql' => __('resources.engine.mysql'),
+        'postgresql' => __('resources.engine.postgresql'),
+        'mssql' => __('resources.engine.mssql'),
+    ];
+
+    $tlsLabels = [
+        'prefer' => __('resources.tls.prefer'),
+        'require' => __('resources.tls.require'),
+        'disable' => __('resources.tls.disable'),
+        'verify_ca' => __('resources.tls.verify_ca'),
+        'verify_full' => __('resources.tls.verify_full'),
+    ];
+
+    $authLabels = [
+        'client_passthrough' => __('resources.auth.client_passthrough'),
+        'managed' => __('resources.auth.managed'),
+    ];
+@endphp
+
 <div class="page-head">
     <div>
-        <h1 class="page-title">DB Resources</h1>
-        <p class="subtitle">
-            Цільові БД, доступні для створення gateway sessions.
-        </p>
+        <h1 class="page-title">{{ __('resources.heading') }}</h1>
+
+        <p class="subtitle">{{ __('resources.subtitle') }}</p>
     </div>
 
     <a class="button primary" href="{{ route('admin.resources.create') }}">
-        + Створити resource
+        + {{ __('resources.create') }}
     </a>
 </div>
 
@@ -67,16 +42,16 @@
     <table>
         <thead>
             <tr>
-                <th>Resource</th>
-                <th>Engine</th>
-                <th>Target</th>
-                <th>TLS / Auth</th>
-                <th>SQL audit</th>
-                <th>Стан</th>
-                <th>Sessions</th>
-                <th>Active gateways</th>
-                <th>Open connections</th>
-                <th>Створив</th>
+                <th>{{ __('resources.columns.resource') }}</th>
+                <th>{{ __('resources.columns.engine') }}</th>
+                <th>{{ __('resources.columns.target') }}</th>
+                <th>{{ __('resources.columns.tls_auth') }}</th>
+                <th>{{ __('resources.columns.sql_audit') }}</th>
+                <th>{{ __('resources.columns.status') }}</th>
+                <th>{{ __('resources.columns.sessions') }}</th>
+                <th>{{ __('resources.columns.active_gateways') }}</th>
+                <th>{{ __('resources.columns.open_connections') }}</th>
+                <th>{{ __('resources.columns.created_by') }}</th>
             </tr>
         </thead>
 
@@ -92,12 +67,14 @@
                         </a>
 
                         <div class="muted">
-                            {{ $resource->description ?: '—' }}
+                            {{ $resource->description ?: $notAvailable }}
                         </div>
                     </td>
 
                     <td>
-                        <span class="badge">{{ $resource->engine }}</span>
+                        <span class="badge">
+                            {{ $engineLabels[$resource->engine] ?? $resource->engine }}
+                        </span>
                     </td>
 
                     <td class="endpoint">
@@ -112,21 +89,28 @@
                     </td>
 
                     <td>
-                        {{ $resource->target_tls_mode }}<br>
+                        {{ $tlsLabels[$resource->target_tls_mode]
+                            ?? $resource->target_tls_mode }}<br>
+
                         <span class="muted">
-                            {{ $resource->auth_mode }}
+                            {{ $authLabels[$resource->auth_mode]
+                                ?? $resource->auth_mode }}
                         </span>
                     </td>
 
                     <td>
                         <span class="badge {{ $resource->query_audit_enabled ? 'green' : 'red' }}">
-                            {{ $resource->query_audit_enabled ? 'enabled' : 'disabled' }}
+                            {{ $resource->query_audit_enabled
+                                ? __('resources.audit.enabled')
+                                : __('resources.audit.disabled') }}
                         </span>
                     </td>
 
                     <td>
                         <span class="badge {{ $resource->is_active ? 'green' : 'red' }}">
-                            {{ $resource->is_active ? 'active' : 'inactive' }}
+                            {{ $resource->is_active
+                                ? __('resources.status.active')
+                                : __('resources.status.inactive') }}
                         </span>
                     </td>
 
@@ -135,7 +119,8 @@
                     <td>{{ $resource->open_connections_count }}</td>
 
                     <td>
-                        {{ $resource->createdBy?->name ?? '—' }}<br>
+                        {{ $resource->createdBy?->name ?? $notAvailable }}<br>
+
                         <span class="muted">
                             {{ $resource->createdBy?->email ?? '' }}
                         </span>
@@ -144,7 +129,7 @@
             @empty
                 <tr>
                     <td colspan="10" class="muted">
-                        DB resources ще не створювались.
+                        {{ __('resources.empty') }}
                     </td>
                 </tr>
             @endforelse

@@ -15,6 +15,8 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->trustProxies(at: '*');
 
+        $middleware->appendToGroup('web', \App\Http\Middleware\SetLocale::class);
+
         $middleware->alias([
             'ce.admin' => \App\Http\Middleware\EnsureCeAdmin::class,
             'ce.mfa' => \App\Http\Middleware\EnsureCeMfa::class,

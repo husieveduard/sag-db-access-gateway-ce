@@ -1,116 +1,26 @@
 @extends('layouts.app')
 
-@section('title', 'Редагувати resource · SAG DB Access Gateway CE')
-
-@push('styles')
-<style>
-    .back-link {
-        display: inline-block;
-        margin-bottom: 18px;
-        color: var(--blue);
-    }
-
-    .form-card {
-        width: min(820px, 100%);
-        padding: 24px;
-    }
-
-    .form-grid {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 16px;
-    }
-
-    .full { grid-column: 1 / -1; }
-
-    label {
-        display: block;
-        margin-bottom: 7px;
-        color: var(--muted);
-        font-size: 12px;
-        font-weight: 700;
-        text-transform: uppercase;
-    }
-
-    input, select, textarea {
-        width: 100%;
-        padding: 10px 11px;
-        color: var(--text);
-        background: #0d1726;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        outline: none;
-    }
-
-    textarea {
-        min-height: 110px;
-        resize: vertical;
-    }
-
-    input:focus, select:focus, textarea:focus {
-        border-color: var(--blue);
-    }
-
-    .field-error {
-        margin-top: 6px;
-        color: #ffc2c2;
-        font-size: 13px;
-    }
-
-    .hint {
-        margin-top: 7px;
-        color: var(--muted);
-        font-size: 13px;
-        line-height: 1.45;
-    }
-
-    .warning {
-        margin-bottom: 18px;
-        padding: 12px 14px;
-        border: 1px solid rgba(242,201,76,.30);
-        border-radius: 9px;
-        color: #f7dfa0;
-        background: rgba(242,201,76,.08);
-    }
-
-    .submit-row {
-        display: flex;
-        gap: 12px;
-        align-items: center;
-        margin-top: 22px;
-    }
-
-    .button {
-        min-height: 39px;
-        padding: 9px 13px;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        color: var(--text);
-        background: transparent;
-        cursor: pointer;
-        font-weight: 700;
-    }
-
-    .button.primary {
-        border-color: rgba(90,169,255,.55);
-        color: #d9ebff;
-        background: rgba(90,169,255,.13);
-    }
-
-    .button:hover { border-color: var(--blue); }
-
-    @media (max-width: 650px) {
-        .form-grid { grid-template-columns: 1fr; }
-    }
-</style>
-@endpush
+@section('title', __('resources.edit_page.title').' · '.__('ce.app_title'))
 
 @section('content')
+@php
+    $engineLabels = [
+        'mysql' => __('resources.engine.mysql'),
+        'postgresql' => __('resources.engine.postgresql'),
+        'mssql' => __('resources.engine.mssql'),
+    ];
+
+    $authLabels = [
+        'client_passthrough' => __('resources.auth.client_passthrough'),
+        'managed' => __('resources.auth.managed'),
+    ];
+@endphp
+
 <a class="back-link" href="{{ route('admin.resources.show', $resource) }}">
-    ← До картки resource
+    {{ __('resources.edit_page.back') }}
 </a>
 
-<h1 class="page-title">Редагувати DB resource</h1>
+<h1 class="page-title">{{ __('resources.edit_page.heading') }}</h1>
 <p class="subtitle">{{ $resource->name }}</p>
 
 @if ($errors->has('resource'))
@@ -119,8 +29,10 @@
 
 @if ($resource->active_sessions_count > 0)
     <div class="warning">
-        Зараз є active gateway sessions: {{ $resource->active_sessions_count }}.
-        Зміна engine, target host, port або database буде заблокована до їх завершення.
+        {{ __('resources.edit_page.active_sessions_warning', [
+            'count' => $resource->active_sessions_count,
+        ]) }}
+        {{ __('resources.edit_page.active_sessions_notice') }}
     </div>
 @endif
 
@@ -134,7 +46,8 @@
 
     <div class="form-grid">
         <div>
-            <label for="name">Назва resource</label>
+            <label for="name">{{ __('resources.edit_page.name') }}</label>
+
             <input
                 id="name"
                 name="name"
@@ -144,30 +57,36 @@
                 required
                 autofocus
             >
+
             @error('name')
                 <div class="field-error">{{ $message }}</div>
             @enderror
         </div>
 
         <div>
-            <label for="engine">Тип БД</label>
+            <label for="engine">{{ __('resources.edit_page.engine') }}</label>
+
             <select id="engine" name="engine" required>
                 @foreach ($engines as $value => $label)
                     <option
                         value="{{ $value }}"
                         @selected(old('engine', $resource->engine) === $value)
                     >
-                        {{ $label }}
+                        {{ $engineLabels[$value] ?? $label }}
                     </option>
                 @endforeach
             </select>
+
             @error('engine')
                 <div class="field-error">{{ $message }}</div>
             @enderror
         </div>
 
         <div>
-            <label for="target_host">Target host</label>
+            <label for="target_host">
+                {{ __('resources.edit_page.target_host') }}
+            </label>
+
             <input
                 id="target_host"
                 name="target_host"
@@ -176,13 +95,17 @@
                 value="{{ old('target_host', $resource->target_host) }}"
                 required
             >
+
             @error('target_host')
                 <div class="field-error">{{ $message }}</div>
             @enderror
         </div>
 
         <div>
-            <label for="target_port">Target port</label>
+            <label for="target_port">
+                {{ __('resources.edit_page.target_port') }}
+            </label>
+
             <input
                 id="target_port"
                 name="target_port"
@@ -192,13 +115,17 @@
                 value="{{ old('target_port', $resource->target_port) }}"
                 required
             >
+
             @error('target_port')
                 <div class="field-error">{{ $message }}</div>
             @enderror
         </div>
 
         <div class="full">
-            <label for="target_database">Database / catalog</label>
+            <label for="target_database">
+                {{ __('resources.edit_page.database') }}
+            </label>
+
             <input
                 id="target_database"
                 name="target_database"
@@ -206,18 +133,23 @@
                 maxlength="128"
                 value="{{ old('target_database', $resource->target_database) }}"
             >
+
             @error('target_database')
                 <div class="field-error">{{ $message }}</div>
             @enderror
         </div>
 
         <div class="full">
-            <label for="description">Опис</label>
+            <label for="description">
+                {{ __('resources.edit_page.description') }}
+            </label>
+
             <textarea
                 id="description"
                 name="description"
                 maxlength="5000"
             >{{ old('description', $resource->description) }}</textarea>
+
             @error('description')
                 <div class="field-error">{{ $message }}</div>
             @enderror
@@ -225,17 +157,18 @@
     </div>
 
     <div class="hint">
-        Паролі БД не зберігаються. Використовується
-        <code>client_passthrough</code>; SQL audit увімкнений.
+        {{ __('resources.edit_page.security_note_before') }}
+        <code>{{ $authLabels[$resource->auth_mode] ?? $resource->auth_mode }}</code>.
+        {{ __('resources.edit_page.security_note_after') }}
     </div>
 
     <div class="submit-row">
         <button class="button primary" type="submit">
-            Зберегти зміни
+            {{ __('resources.edit_page.submit') }}
         </button>
 
         <a class="button" href="{{ route('admin.resources.show', $resource) }}">
-            Скасувати
+            {{ __('resources.edit_page.cancel') }}
         </a>
     </div>
 </form>

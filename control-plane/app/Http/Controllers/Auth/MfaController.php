@@ -93,7 +93,7 @@ class MfaController extends Controller
             return redirect()
                 ->route('mfa.setup')
                 ->withErrors([
-                    'code' => 'Сесію налаштування MFA оновлено. Відскануйте новий QR-код.',
+                    'code' => __('messages.auth.mfa.setup_session_refreshed'),
                 ]);
         }
 
@@ -103,7 +103,7 @@ class MfaController extends Controller
             $seconds = RateLimiter::availableIn($key);
 
             return back()->withErrors([
-                'code' => "Забагато неправильних кодів. Повторіть через {$seconds} с.",
+                'code' => __('messages.auth.mfa.too_many_invalid_codes', ['seconds' => $seconds]),
             ]);
         }
 
@@ -121,7 +121,7 @@ class MfaController extends Controller
             );
 
             return back()->withErrors([
-                'code' => 'Невірний код. Перевірте час на телефоні та спробуйте ще раз.',
+                'code' => __('messages.auth.mfa.invalid_totp'),
             ]);
         }
 
@@ -200,7 +200,7 @@ class MfaController extends Controller
             $seconds = RateLimiter::availableIn($key);
 
             return back()->withErrors([
-                'code' => "Забагато неправильних кодів. Повторіть через {$seconds} с.",
+                'code' => __('messages.auth.mfa.too_many_invalid_codes', ['seconds' => $seconds]),
             ]);
         }
 
@@ -236,7 +236,7 @@ class MfaController extends Controller
             );
 
             return back()->withErrors([
-                'code' => 'Невірний MFA або recovery code.',
+                'code' => __('messages.auth.mfa.invalid_mfa_or_recovery'),
             ]);
         }
 
@@ -264,7 +264,7 @@ class MfaController extends Controller
         if (!is_array($codes) || $codes === []) {
             return redirect()
                 ->route('admin.dashboard')
-                ->with('success', 'Recovery codes уже підтверджені або недоступні.');
+                ->with('success', __('messages.auth.mfa.recovery_codes_unavailable'));
         }
 
         return view('auth.mfa-recovery-codes', [
@@ -291,7 +291,7 @@ class MfaController extends Controller
 
         return redirect()
             ->route('admin.dashboard')
-            ->with('success', 'MFA налаштовано. Recovery codes підтверджено.');
+            ->with('success', __('messages.auth.mfa.setup_completed'));
     }
 
     private function pendingUserOrRedirect(
@@ -312,7 +312,7 @@ class MfaController extends Controller
             return redirect()
                 ->route('login')
                 ->withErrors([
-                    'email' => 'Сесію MFA завершено. Увійдіть повторно.',
+                    'email' => __('messages.auth.mfa.pending_expired'),
                 ]);
         }
 
@@ -328,7 +328,7 @@ class MfaController extends Controller
             return redirect()
                 ->route('login')
                 ->withErrors([
-                    'email' => 'Користувач недоступний для MFA-підтвердження.',
+                    'email' => __('messages.auth.mfa.pending_user_unavailable'),
                 ]);
         }
 

@@ -68,7 +68,7 @@ class OperationController extends Controller
 
                 if ($pending) {
                     throw new DomainException(
-                        'Для цієї сесії вже виконується lifecycle-операція.'
+                        __('messages.operations.already_pending')
                     );
                 }
 
@@ -79,13 +79,13 @@ class OperationController extends Controller
                         true,
                     )) {
                         throw new DomainException(
-                            'Start доступний лише для сесій created або failed.'
+                            __('messages.operations.start_unavailable')
                         );
                     }
 
                     if (!$lockedSession->resource?->is_active) {
                         throw new DomainException(
-                            'Неможливо запустити сесію: DB resource неактивний.'
+                            __('messages.operations.resource_inactive')
                         );
                     }
                 }
@@ -97,7 +97,7 @@ class OperationController extends Controller
                         true,
                     )) {
                         throw new DomainException(
-                            'Сесія вже перебуває у завершеному стані.'
+                            __('messages.operations.already_finished')
                         );
                     }
                 }
@@ -162,7 +162,7 @@ class OperationController extends Controller
                 ->route('admin.sessions.show', $session)
                 ->with(
                     'success',
-                    "Операцію {$operation->operation_uid} поставлено в чергу."
+                    __('messages.operations.queued', ['operation_uid' => $operation->operation_uid])
                 );
         } catch (DomainException $exception) {
             return back()

@@ -132,7 +132,7 @@ class SessionController extends Controller
                     Closure $fail,
                 ): void {
                     if (!$this->isValidIpOrCidr((string) $value)) {
-                        $fail('Вкажіть коректну IP-адресу або CIDR, наприклад 10.10.10.1/32.');
+                        $fail(__('messages.sessions.invalid_source_cidr'));
                     }
                 },
             ],
@@ -145,7 +145,7 @@ class SessionController extends Controller
             return back()
                 ->withInput()
                 ->withErrors([
-                    'db_username' => 'Вкажіть DB username для аудиту.',
+                    'db_username' => __('messages.sessions.db_username_required'),
                 ]);
         }
 
@@ -162,7 +162,7 @@ class SessionController extends Controller
 
                 if (!$resource || !$resource->is_active) {
                     throw new DomainException(
-                        'Вибраний DB resource не існує або неактивний.'
+                        __('messages.sessions.resource_unavailable')
                     );
                 }
 
@@ -243,7 +243,7 @@ class SessionController extends Controller
             ->route('admin.sessions.show', $session)
             ->with(
                 'success',
-                "Session {$session->public_id} створено. Для відкриття gateway натисни Start session."
+                __('messages.sessions.created', ['public_id' => $session->public_id])
             );
     }
 
@@ -262,9 +262,57 @@ class SessionController extends Controller
             ->limit(100)
             ->get();
 
-        $queries = DbQueryEvent::query()
+        $riskFilter = (string) request()->query('risk', 'all');
+
+        $allowedRiskFilters = [
+            'all',
+            'critical',
+            'high',
+            'medium',
+            'low',
+        ];
+
+        if (! in_array($riskFilter, $allowedRiskFilters, true)) {
+            $riskFilter = 'all';
+        }
+
+        $riskSummaryRow = DbQueryEvent::query()
             ->where('session_id', $session->id)
-            ->latest('id')
+            ->selectRaw("
+                COUNT(*) AS total_count,
+                SUM(CASE WHEN risk_level = 'critical' THEN 1 ELSE 0 END) AS critical_count,
+                SUM(CASE WHEN risk_level = 'high' THEN 1 ELSE 0 END) AS high_count,
+                SUM(CASE WHEN risk_level = 'medium' THEN 1 ELSE 0 END) AS medium_count,
+                SUM(CASE WHEN risk_level = 'low' THEN 1 ELSE 0 END) AS low_count
+            ")
+            ->first();
+
+        $riskSummary = [
+            'total' => (int) ($riskSummaryRow->total_count ?? 0),
+            'critical' => (int) ($riskSummaryRow->critical_count ?? 0),
+            'high' => (int) ($riskSummaryRow->high_count ?? 0),
+            'medium' => (int) ($riskSummaryRow->medium_count ?? 0),
+            'low' => (int) ($riskSummaryRow->low_count ?? 0),
+        ];
+
+        $queriesQuery = DbQueryEvent::query()
+            ->where('session_id', $session->id);
+
+        if ($riskFilter !== 'all') {
+            $queriesQuery->where('risk_level', $riskFilter);
+        }
+
+        $queries = $queriesQuery
+            ->orderByRaw("
+                CASE risk_level
+                    WHEN 'critical' THEN 4
+                    WHEN 'high' THEN 3
+                    WHEN 'medium' THEN 2
+                    WHEN 'low' THEN 1
+                    ELSE 0
+                END DESC
+            ")
+            ->orderByDesc('id')
             ->limit(100)
             ->get();
 
@@ -286,6 +334,8 @@ class SessionController extends Controller
             'session' => $session,
             'connections' => $connections,
             'queries' => $queries,
+            'riskFilter' => $riskFilter,
+            'riskSummary' => $riskSummary,
             'operations' => $operations,
             'auditEvents' => $auditEvents,
         ]);

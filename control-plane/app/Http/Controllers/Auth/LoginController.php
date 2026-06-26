@@ -38,7 +38,7 @@ class LoginController extends Controller
 
             return back()
                 ->withErrors([
-                    'email' => "Забагато спроб входу. Повторіть через {$seconds} с.",
+                    'email' => __('messages.auth.login.too_many_attempts', ['seconds' => $seconds]),
                 ])
                 ->onlyInput('email');
         }
@@ -67,7 +67,7 @@ class LoginController extends Controller
 
             return back()
                 ->withErrors([
-                    'email' => 'Невірна email-адреса або пароль.',
+                    'email' => __('messages.auth.login.invalid_credentials'),
                 ])
                 ->onlyInput('email');
         }
