@@ -37,6 +37,10 @@
                         href="{{ route('admin.sessions.index') }}"
                         class="{{ request()->routeIs('admin.sessions.*') ? 'active' : '' }}"
                     >{{ __('ce.nav.sessions') }}</a>
+                    @if (auth()->user()->isSuperAdmin())
+                        <a href="{{ route('admin.administrators.index') }}">{{ __('ce.nav.administrators') }}</a>
+                    @endif
+                    <a href="{{ route('admin.audit.index') }}">{{ __('ce.nav.audit') }}</a>
                 </nav>
             @endauth
         </div>
@@ -56,7 +60,7 @@
             </div>
 
             @auth
-                <span>{{ auth()->user()->name }} · {{ __('ce.role.operator') }}</span>
+                <span>{{ auth()->user()->name }} · {{ auth()->user()->isSuperAdmin() ? __('ce.role.superadmin') : __('ce.role.admin') }}</span>
 
                 <form method="POST" action="{{ route('logout') }}">
                     @csrf

@@ -42,6 +42,16 @@ class User extends Authenticatable
         ];
     }
 
+    public function isSuperAdmin(): bool
+    {
+        return $this->role === 'superadmin';
+    }
+
+    public function isCeAdministrator(): bool
+    {
+        return in_array($this->role, ['admin', 'superadmin'], true);
+    }
+
     public function ownedDbSessions(): HasMany
     {
         return $this->hasMany(DbAccessSession::class, 'owner_user_id');

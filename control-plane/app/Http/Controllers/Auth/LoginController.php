@@ -57,7 +57,7 @@ class LoginController extends Controller
                 ->first();
 
             if ($local) {
-                if ($local->is_active && $local->role === 'admin'
+                if ($local->is_active && $local->isCeAdministrator()
                     && Hash::check($credentials['password'], $local->password)) {
                     $user = $local;
                 }
@@ -106,7 +106,9 @@ class LoginController extends Controller
                                 'name' => $ad['name'],
                                 'email' => $ad['email'],
                                 'ldap_guid' => $ad['guid'],
-                                'role' => 'admin',
+                                'role' => $profile->exists
+                                    ? $profile->role
+                                    : 'admin',
                             ])->save();
 
                             return $profile;

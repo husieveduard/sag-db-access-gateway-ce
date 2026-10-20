@@ -319,7 +319,7 @@ class MfaController extends Controller
         $user = User::query()
             ->whereKey($userId)
             ->where('is_active', true)
-            ->where('role', 'admin')
+            ->whereIn('role', ['admin', 'superadmin'])
             ->first();
 
         if (!$user) {

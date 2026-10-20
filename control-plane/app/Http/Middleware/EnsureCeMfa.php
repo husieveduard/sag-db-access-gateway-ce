@@ -23,7 +23,7 @@ class EnsureCeMfa
 
         $valid = $user
             && $user->is_active
-            && $user->role === 'admin'
+            && $user->isCeAdministrator()
             && $user->mfa_enabled_at !== null
             && filled($user->mfa_totp_secret)
             && $verifiedUserId === $user->id

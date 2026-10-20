@@ -91,7 +91,9 @@ class SagCeCreateAdmin extends Command
                 'name' => $name,
                 'email' => $email,
                 'password' => Hash::make($password),
-                'role' => 'admin',
+                'role' => User::query()->where('role', 'superadmin')->exists()
+                    ? 'admin'
+                    : 'superadmin',
                 'auth_source' => 'local',
                 'is_active' => true,
                 'is_service_account' => false,
