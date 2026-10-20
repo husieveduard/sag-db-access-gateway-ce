@@ -66,6 +66,7 @@ RUN apt-get update \
         libpq-dev \
         libzip-dev \
         unzip \
+    && docker-php-ext-configure ldap --with-libdir=lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH) \
     && docker-php-ext-install -j"$(nproc)" \
         bcmath \
         ldap \
