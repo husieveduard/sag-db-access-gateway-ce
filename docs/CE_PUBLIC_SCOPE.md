@@ -45,9 +45,9 @@ They are intended for controlled service-style use cases such as monitoring, rep
 
 CE uses a simplified operational model:
 
-* multiple local or AD administrators with the same CE-wide permissions;
+* roles: superadmin (global resource/session/audit visibility) and admin (only their own resources, sessions, and audit events);
 * local administrators created via trusted CLI, and domain administrators provisioned only after successful AD authentication and authorized-group verification;
-* no complex role hierarchy;
+* the first local administrator is superadmin; a superadmin may appoint an existing local or AD administrator; the final active superadmin cannot be demoted;
 * no approval workflow;
 * no per-user resource grant matrix.
 
