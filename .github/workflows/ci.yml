@@ -29,7 +29,7 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'
-          extensions: bcmath, mbstring, pcntl, pdo_pgsql, redis, zip
+          extensions: bcmath, mbstring, pcntl, pdo_pgsql, pdo_sqlite, redis, zip
           coverage: none
 
       - name: Validate Composer metadata
@@ -45,6 +45,7 @@ jobs:
         run: |
           cp .env.example .env
           php artisan key:generate --force
+          mkdir -p storage/framework/views storage/framework/cache/data storage/framework/sessions bootstrap/cache
 
       - name: Lint PHP files
         working-directory: control-plane
@@ -60,11 +61,84 @@ jobs:
             -print0 \
           | xargs -0 -r -n1 php -l
 
+      - name: Run Laravel feature tests (SQLite)
+        working-directory: control-plane
+        run: php artisan test
+
       - name: Validate application routes
         working-directory: control-plane
         run: |
           php artisan route:list --name=login
           php artisan route:list --name=mfa
+
+  php-postgres:
+    name: Laravel integration (PostgreSQL 16)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: sag_test
+          POSTGRES_PASSWORD: postgres_test_only
+          POSTGRES_DB: sag_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U sag_test -d sag_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: bcmath, mbstring, pcntl, pdo_pgsql, pdo_sqlite, redis, zip
+          coverage: none
+      - name: Install PHP dependencies
+        working-directory: control-plane
+        run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Run lifecycle and audit integration tests
+        working-directory: control-plane
+        env:
+          APP_ENV: testing
+          APP_KEY: 'base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
+          DB_CONNECTION: pgsql
+          DB_HOST: 127.0.0.1
+          DB_PORT: '5432'
+          DB_DATABASE: sag_test
+          DB_USERNAME: sag_test
+          DB_PASSWORD: postgres_test_only
+        run: |
+          mkdir -p storage/framework/views storage/framework/cache/data storage/framework/sessions bootstrap/cache
+          php artisan test --filter='LifecycleHardeningTest|GatewayAuditRedactionTest'
+
+  live-gateway:
+    name: Real gateway Linux lifecycle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.x'
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: bcmath, mbstring, pcntl, pdo_sqlite, redis, zip
+          coverage: none
+      - name: Build real gateway binary
+        working-directory: db-gateway
+        run: go build -o /tmp/sag-db-gateway-ci .
+      - name: Install Laravel dependencies
+        working-directory: control-plane
+        run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Run real process lifecycle test
+        working-directory: control-plane
+        env:
+          SAG_CI_LIVE_GATEWAY_BINARY: /tmp/sag-db-gateway-ci
+        run: |
+          mkdir -p storage/framework/views storage/framework/cache/data storage/framework/sessions bootstrap/cache
+          php artisan test --filter=LiveGatewayProcessTest
 
   go:
     name: Go gateway tests
@@ -86,6 +160,8 @@ jobs:
     needs:
       - preflight
       - php
+      - php-postgres
+      - live-gateway
       - go
     runs-on: ubuntu-latest
 

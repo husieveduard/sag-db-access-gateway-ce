@@ -18,9 +18,13 @@ class SagCleanupExpired extends Command
     {
         $sessions = DbAccessSession::query()
             ->with('resource')
-            ->whereIn('status', ['created', 'starting', 'started'])
-            ->whereNotNull('expires_at')
-            ->where('expires_at', '<=', now())
+            ->where(function ($query): void {
+                $query->where(function ($expired): void {
+                    $expired->whereIn('status', ['created', 'starting', 'started'])
+                        ->whereNotNull('expires_at')
+                        ->where('expires_at', '<=', now());
+                })->orWhere('status', 'stopping');
+            })
             ->orderBy('id')
             ->get();
 
@@ -47,12 +51,19 @@ class SagCleanupExpired extends Command
             }
 
             try {
-                $result = $lifecycle->expire($session);
+                $result = $session->status === 'stopping'
+                    && $session->termination_reason !== 'session_expired'
+                    ? $lifecycle->terminate(
+                        $session,
+                        $session->terminated_by_user_id,
+                        $session->termination_reason ?: 'manual_revoke',
+                    )
+                    : $lifecycle->expire($session);
 
                 $stats['expired']++;
 
                 $this->line(
-                    "Expired {$result['session_uid']} "
+                    "Finalized {$result['session_uid']} "
                     ."gateway={$result['gateway']['state']} "
                     ."connections={$result['activity']['closed_connections']} "
                     ."queries={$result['activity']['interrupted_queries']}"

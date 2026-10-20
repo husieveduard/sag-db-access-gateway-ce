@@ -30,6 +30,7 @@ return [
         'created' => 'created',
         'starting' => 'starting',
         'started' => 'active',
+        'stopping' => 'stopping / awaiting retry',
         'ended' => 'ended',
         'terminated' => 'revoked',
         'expired' => 'expired',

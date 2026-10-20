@@ -34,3 +34,23 @@ func TestClassifySQL(t *testing.T) {
 		})
 	}
 }
+
+func TestSQLEventRedactionNeverExposesLiterals(t *testing.T) {
+	cases := []string{
+		"UPDATE users SET password='hunter2' WHERE email='alice@example.com'",
+		"INSERT INTO people VALUES ('+380501234567', 1234)",
+		"EXEC sp_executesql N'SELECT * FROM payment WHERE card=1234'",
+		"SELECT $$confidential$$, E'\\\\secret', 'unicode-🔐'",
+		"/*secret*/ SELECT 'token=abc'",
+	}
+	for _, input := range cases {
+		for _, got := range []string{maskSQL(input), summarizeSQL(input)} {
+			if got != "[REDACTED]" {
+				t.Fatalf("unexpected SQL redaction output for test case: %q", got)
+			}
+		}
+	}
+	if got := maskSQL("  "); got != "" {
+		t.Fatalf("empty input should stay empty: %q", got)
+	}
+}

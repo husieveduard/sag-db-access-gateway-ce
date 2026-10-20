@@ -69,7 +69,7 @@
                 @php
                     $statusClass = match ($session->status) {
                         'started' => 'green',
-                        'starting', 'created' => 'yellow',
+                        'starting', 'created', 'stopping' => 'yellow',
                         'terminated', 'expired', 'failed', 'ended' => 'red',
                         default => '',
                     };

@@ -1005,9 +1005,7 @@ func finalizeCurrentQuery(state *ConnState) {
 		payload["error_code"] = q.ErrorCode
 	}
 
-	if q.ErrorMsg != "" {
-		payload["error_message_masked"] = q.ErrorMsg
-	}
+	// Error descriptions can contain literal SQL and secrets. Keep error codes only.
 
 	postJSON("/api/internal/db/query-event", payload)
 }
@@ -1299,18 +1297,18 @@ func rowsFromCommandTag(tag string) *int64 {
 	return &n
 }
 
+// Deliberately redact the entire statement: regex/literal replacement is not
+// sufficient for PostgreSQL, MySQL or TDS dialects. Statement type, risk and
+// hash are retained separately in query events.
 func maskSQL(sql string) string {
-	sql = strings.ReplaceAll(sql, "\x00", "")
-	sql = strings.Join(strings.Fields(sql), " ")
-	return sql
+	if strings.TrimSpace(sql) == "" {
+		return ""
+	}
+	return "[REDACTED]"
 }
 
 func summarizeSQL(sql string) string {
-	sql = maskSQL(sql)
-	if len(sql) > 160 {
-		return sql[:160] + "..."
-	}
-	return sql
+	return maskSQL(sql)
 }
 
 func sha256hex(s string) string {
