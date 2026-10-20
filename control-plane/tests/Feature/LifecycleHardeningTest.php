@@ -14,7 +14,7 @@ class LifecycleHardeningTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function session(string $status = 'started', bool $expired = false): DbAccessSession
+    private function makeGatewaySession(string $status = 'started', bool $expired = false): DbAccessSession
     {
         $user = User::factory()->create();
         $resource = DatabaseResource::query()->create([
@@ -53,7 +53,7 @@ class LifecycleHardeningTest extends TestCase
 
     public function test_failed_termination_keeps_nonterminal_state_and_preserves_open_activity(): void
     {
-        $session = $this->session();
+        $session = $this->makeGatewaySession();
         $this->expectException(RuntimeException::class);
         try {
             $this->lifecycle('signal_not_sent')->terminate($session, null, 'security_revoke');
@@ -66,7 +66,7 @@ class LifecycleHardeningTest extends TestCase
 
     public function test_retry_of_failed_termination_can_complete(): void
     {
-        $session = $this->session();
+        $session = $this->makeGatewaySession();
         try {
             $this->lifecycle('stop_failed')->terminate($session);
         } catch (RuntimeException) {}
@@ -79,7 +79,7 @@ class LifecycleHardeningTest extends TestCase
 
     public function test_failed_expiry_is_retried_by_cleanup(): void
     {
-        $session = $this->session('started', true);
+        $session = $this->makeGatewaySession('started', true);
         $service = $this->lifecycle('gateway_pid_command_mismatch');
 
         $this->app->instance(DbGatewayLifecycleService::class, $service);
@@ -93,7 +93,7 @@ class LifecycleHardeningTest extends TestCase
 
     public function test_cleanup_retries_manual_termination_with_original_reason(): void
     {
-        $session = $this->session('stopping');
+        $session = $this->makeGatewaySession('stopping');
         $session->forceFill(['termination_reason' => 'manual_revoke'])->save();
         $this->app->instance(DbGatewayLifecycleService::class, $this->lifecycle('gateway_not_running'));
 
