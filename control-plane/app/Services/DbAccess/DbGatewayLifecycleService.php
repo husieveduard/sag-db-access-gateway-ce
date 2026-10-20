@@ -132,6 +132,7 @@ class DbGatewayLifecycleService
             is_array(data_get($metadata, 'db')) ? data_get($metadata, 'db') : [],
             [
                 'gateway_pid' => $pid,
+                'gateway_proc_start_ticks' => $this->processStartTicks($pid),
                 'gateway_log_path' => $logFile,
                 'gateway_started_at' => now()->toIso8601String(),
             ],
@@ -391,17 +392,10 @@ class DbGatewayLifecycleService
             ];
         }
 
-        $cmdline = $this->processCmdline($pid);
-        $expectedBinary = basename((string) config('sag.db_gateway.binary', ''));
-
-        if (
-            $cmdline === ''
-            || (!str_contains($cmdline, $expectedBinary)
-            && !str_contains($cmdline, 'sag-db-gateway'))
-        ) {
+        if (!$this->isExpectedGatewayProcess($pid, $session)) {
             return [
                 'pid' => $pid,
-                'state' => 'gateway_pid_command_mismatch',
+                'state' => 'gateway_pid_identity_mismatch',
                 'stopped' => false,
             ];
         }
@@ -411,8 +405,12 @@ class DbGatewayLifecycleService
         $killSent = false;
 
         if (!$stoppedAfterTerm && $this->isProcessRunning($pid)) {
-            $killSent = $this->sendSignal($pid, 9);
-            $this->waitForExit($pid, 30, 100000);
+            // Recheck identity before escalating: the original PID could have
+            // exited and been reassigned while waiting for SIGTERM.
+            if ($this->isExpectedGatewayProcess($pid, $session)) {
+                $killSent = $this->sendSignal($pid, 9);
+                $this->waitForExit($pid, 30, 100000);
+            }
         }
 
         $stopped = !$this->isProcessRunning($pid);
@@ -570,15 +568,64 @@ class DbGatewayLifecycleService
         return !preg_match('/^State:\\s+Z/m', $status);
     }
 
-    private function processCmdline(int $pid): string
+    /**
+     * Reject recycled PIDs and unrelated processes even if their arguments
+     * happen to mention sag-db-gateway. Linux /proc is required by CE worker.
+     */
+    private function isExpectedGatewayProcess(int $pid, DbAccessSession $session): bool
     {
-        $path = '/proc/'.$pid.'/cmdline';
+        $binary = realpath((string) config('sag.db_gateway.binary', ''));
+        $executable = @readlink('/proc/'.$pid.'/exe');
 
-        if (!is_readable($path)) {
-            return '';
+        if ($binary === false || $executable === false || $executable !== $binary) {
+            return false;
         }
 
-        return trim(str_replace("\0", ' ', (string) file_get_contents($path)));
+        $environment = @file_get_contents('/proc/'.$pid.'/environ');
+        if ($environment === false) {
+            return false;
+        }
+
+        // Compare the exact NUL-terminated environment entry. Never log
+        // /proc/environ: the process also holds the internal API token.
+        $entry = 'SAG_DB_SESSION_UID='.$session->public_id."\0";
+        if (!str_contains($environment, "\0".$entry) && !str_starts_with($environment, $entry)) {
+            return false;
+        }
+
+        $storedTicks = data_get($session->metadata, 'db.gateway_proc_start_ticks');
+        if ($storedTicks !== null) {
+            $liveTicks = $this->processStartTicks($pid);
+            if ($liveTicks === null || !hash_equals((string) $storedTicks, $liveTicks)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Linux /proc/[pid]/stat field 22, counted after the command field.
+     * Save on launch to detect PID reuse. A legacy session without ticks
+     * still must pass exact executable and session UID checks.
+     */
+    private function processStartTicks(int $pid): ?string
+    {
+        $stat = @file_get_contents('/proc/'.$pid.'/stat');
+        if ($stat === false) {
+            return null;
+        }
+
+        $endCommand = strrpos($stat, ') ');
+        if ($endCommand === false) {
+            return null;
+        }
+
+        $fields = preg_split('/\s+/', trim(substr($stat, $endCommand + 2)));
+
+        return is_array($fields) && isset($fields[19]) && ctype_digit($fields[19])
+            ? $fields[19]
+            : null;
     }
 
     private function waitForExit(
