@@ -3,8 +3,6 @@
 namespace App\Services\Alerts;
 
 use App\Models\AlertDelivery;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Mail;
 use RuntimeException;
 use Throwable;
 
@@ -55,8 +53,7 @@ class AlertDeliveryService
     private function send(AlertDelivery $delivery): void
     {
         $alert = $delivery->alert;
-        // Deliberately transmit only event metadata, never SQL or event_data.
-        $payload = [
+        app(ChannelSender::class)->send($delivery->channel, [
             'alert_id' => $alert->id,
             'rule' => $alert->rule->code,
             'severity' => $alert->severity,
@@ -64,26 +61,6 @@ class AlertDeliveryService
             'session_id' => $alert->session_id,
             'occurrences' => $alert->occurrence_count,
             'first_seen_at' => $alert->first_seen_at?->toIso8601String(),
-        ];
-
-        if ($delivery->channel === 'webhook') {
-            $url = (string) config('sag.alerts.webhook_url');
-            if (!str_starts_with($url, 'https://')) {
-                throw new RuntimeException('Alert webhook must use HTTPS.');
-            }
-            $response = Http::timeout(5)->acceptJson()
-                ->withHeaders(['X-SAG-Alert-Id' => (string) $alert->id])
-                ->post($url, $payload);
-            $response->throw();
-        } elseif ($delivery->channel === 'email') {
-            Mail::raw(
-                'SAG security alert #'.$alert->id.' ('.$alert->severity.'): '.$alert->rule->title
-                    ."\nResource ID: ".($alert->resource_id ?? 'n/a')
-                    ."\nSession ID: ".($alert->session_id ?? 'n/a'),
-                fn ($mail) => $mail->to(config('sag.alerts.email_to'))->subject('SAG CE Security Alert #'.$alert->id)
-            );
-        } else {
-            throw new RuntimeException('Unsupported alert delivery channel.');
-        }
+        ]);
     }
 }
