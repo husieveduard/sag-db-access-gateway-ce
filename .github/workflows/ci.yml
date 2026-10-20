@@ -45,6 +45,7 @@ jobs:
         run: |
           cp .env.example .env
           php artisan key:generate --force
+          mkdir -p storage/framework/views storage/framework/cache/data storage/framework/sessions bootstrap/cache
 
       - name: Lint PHP files
         working-directory: control-plane
