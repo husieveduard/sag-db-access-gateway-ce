@@ -177,33 +177,46 @@ class DbGatewayLifecycleService
             ];
         }
 
-        $now = now();
+        // Deny new gateway connections before signalling the process.
+        $session->forceFill([
+            'status' => 'stopping',
+            'termination_reason' => $reason,
+            'last_activity_at' => now(),
+        ])->save();
 
+        $gateway = $this->stopGateway($session);
+        $confirmed = $this->gatewayStopConfirmed($session, $gateway);
+
+        if (!$confirmed) {
+            $this->writeAudit(
+                $session, null, 'access.db.gateway.stop_failed', 'high',
+                ['reason' => $reason, 'gateway_state' => $gateway['state']],
+                $actorUserId,
+            );
+            throw new RuntimeException(
+                'Gateway stop was not confirmed; session remains stopping and can be retried.'
+            );
+        }
+
+        $now = now();
+        $activity = $this->closeOpenActivity($session, 'session_terminated');
         $session->forceFill([
             'status' => 'terminated',
             'ended_at' => $now,
             'terminated_at' => $now,
             'terminated_by_user_id' => $actorUserId,
-            'termination_reason' => $reason,
             'last_activity_at' => $now,
         ])->save();
 
-        $activity = $this->closeOpenActivity($session, 'session_terminated');
-        $gateway = $this->stopGateway($session);
-
         $this->writeAudit(
-            $session,
-            null,
-            'access.db.session.terminated',
-            'high',
+            $session, null, 'access.db.session.terminated', 'high',
             [
                 'reason' => $reason,
                 'gateway_stop_state' => $gateway['state'],
                 'gateway_pid' => $gateway['pid'],
                 'closed_connections' => $activity['closed_connections'],
                 'interrupted_queries' => $activity['interrupted_queries'],
-            ],
-            $actorUserId,
+            ], $actorUserId,
         );
 
         return [
@@ -216,51 +229,47 @@ class DbGatewayLifecycleService
 
     public function expire(DbAccessSession $session): array
     {
-        $now = now();
+        if ($session->status === 'expired') {
+            return [
+                'session_uid' => $session->public_id,
+                'status' => 'expired',
+                'already_terminal' => true,
+                'gateway' => ['state' => 'already_expired'],
+                'activity' => ['closed_connections' => 0, 'interrupted_queries' => 0],
+            ];
+        }
 
+        $session->forceFill([
+            'status' => 'stopping',
+            'termination_reason' => 'session_expired',
+            'last_activity_at' => now(),
+        ])->save();
+
+        $gateway = $this->stopGateway($session);
+        if (!$this->gatewayStopConfirmed($session, $gateway)) {
+            $this->writeAudit(
+                $session, null, 'access.db.gateway.stop_failed', 'high',
+                ['reason' => 'session_expired', 'gateway_state' => $gateway['state']],
+            );
+            throw new RuntimeException(
+                'Expired gateway stop was not confirmed; cleanup must retry.'
+            );
+        }
+
+        $now = now();
+        $activity = $this->closeOpenActivity($session, 'session_expired');
         $session->forceFill([
             'status' => 'expired',
             'ended_at' => $now,
-            'termination_reason' => 'session_expired',
             'last_activity_at' => $now,
         ])->save();
 
-        $activity = $this->closeOpenActivity($session, 'session_expired');
-        $gateway = $this->stopGateway($session);
-
         $this->writeAudit(
-            $session,
-            null,
-            'access.session.expired_by_cleanup',
-            'info',
+            $session, null, 'access.session.expired_by_cleanup', 'info',
             [
                 'expires_at' => $session->expires_at?->toIso8601String(),
                 'closed_connections' => $activity['closed_connections'],
                 'interrupted_queries' => $activity['interrupted_queries'],
-            ],
-        );
-
-        $gatewayStopFailed = !$gateway['stopped']
-            && !in_array(
-                $gateway['state'],
-                ['gateway_pid_not_recorded', 'gateway_not_running'],
-                true,
-            );
-
-        $this->writeAudit(
-            $session,
-            null,
-            $gateway['stopped']
-                ? 'access.db.gateway.stopped_by_cleanup'
-                : ($gatewayStopFailed
-                    ? 'access.db.gateway.stop_failed'
-                    : 'access.db.gateway.stop_not_required'),
-            $gatewayStopFailed
-                ? 'high'
-                : ($gateway['stopped'] ? 'info' : 'low'),
-            [
-                'gateway_pid' => $gateway['pid'],
-                'state' => $gateway['state'],
             ],
         );
 
@@ -270,6 +279,19 @@ class DbGatewayLifecycleService
             'gateway' => $gateway,
             'activity' => $activity,
         ];
+    }
+
+    private function gatewayStopConfirmed(DbAccessSession $session, array $gateway): bool
+    {
+        if ($gateway['stopped'] || $gateway['state'] === 'gateway_not_running') {
+            return true;
+        }
+
+        // Sessions that have never started do not have a gateway process.
+        // A missing PID on a started/stopping session is NOT evidence of shutdown.
+        return $gateway['state'] === 'gateway_pid_not_recorded'
+            && $session->started_at === null
+            && $session->gateway_port === null;
     }
 
     private function closeOpenActivity(
@@ -404,7 +426,7 @@ class DbGatewayLifecycleService
         $metadata['db'] = array_merge(
             is_array(data_get($metadata, 'db')) ? data_get($metadata, 'db') : [],
             [
-                'gateway_stopped_at' => now()->toIso8601String(),
+                'gateway_stopped_at' => $stopped ? now()->toIso8601String() : null,
                 'gateway_stop_state' => $state,
                 'gateway_stop_signal' => $killSent
                     ? 'SIGKILL'
