@@ -6,7 +6,7 @@
 @php
     $statusClass = match ($session->status) {
         'started' => 'green',
-        'starting', 'created' => 'yellow',
+        'starting', 'created', 'stopping' => 'yellow',
         'terminated', 'expired', 'failed', 'ended' => 'red',
         default => '',
     };
@@ -35,6 +35,7 @@
         'created' => __('sessions.status.created'),
         'starting' => __('sessions.status.starting'),
         'started' => __('sessions.status.started'),
+        'stopping' => __('sessions.status.stopping'),
         'ended' => __('sessions.status.ended'),
         'terminated' => __('sessions.status.terminated'),
         'expired' => __('sessions.status.expired'),

@@ -24,6 +24,7 @@ class SessionController extends Controller
         'created',
         'starting',
         'started',
+        'stopping',
         'ended',
         'terminated',
         'expired',

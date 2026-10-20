@@ -370,7 +370,7 @@ class DbGatewayLifecycleService
         ];
     }
 
-    private function stopGateway(DbAccessSession $session): array
+    protected function stopGateway(DbAccessSession $session): array
     {
         $metadata = is_array($session->metadata) ? $session->metadata : [];
         $pid = (int) data_get($metadata, 'db.gateway_pid', 0);
