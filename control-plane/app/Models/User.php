@@ -38,6 +38,7 @@ class User extends Authenticatable
             'mfa_last_used_at' => 'datetime',
             'mfa_reset_at' => 'datetime',
             'mfa_recovery_codes' => 'array',
+            'auth_source' => 'string',
         ];
     }
 

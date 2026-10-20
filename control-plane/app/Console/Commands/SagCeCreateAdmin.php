@@ -44,6 +44,7 @@ class SagCeCreateAdmin extends Command
         }
 
         $activeAdmin = User::query()
+            ->where('auth_source', 'local')
             ->where('role', 'admin')
             ->where('is_active', true)
             ->first();

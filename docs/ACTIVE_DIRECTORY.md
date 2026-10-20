@@ -1,0 +1,62 @@
+# Active Directory sign-in (optional, CE)
+
+SAG DB Access Gateway CE can authenticate web-console users against **Microsoft Active Directory via LDAPS (TCP/636)**. This is separate from SAG Enterprise. It is not AD single sign-on, Kerberos DB authentication, Vault, or resource-level RBAC.
+
+**Authorization model:** members of one explicitly configured AD security group receive the existing CE Operator role (all CE resources). Nested AD groups are evaluated using the AD transitive membership matching rule. A local break-glass Operator remains available; only one **local** CE Operator can be created by the CLI command. Each AD user gets their own local profile and **their own mandatory TOTP MFA**. Target database credentials are still supplied directly to the DB client.
+
+## Preconditions
+
+1. The domain controller has a valid certificate for LDAPS, with a hostname/SAN matching the URL. The app container must trust the issuing CA.
+2. Create a **dedicated** AD security group for trusted CE Operators (do not use Domain Users).
+3. The gateway host can reach domain controllers on TCP/636.
+4. Run the Laravel migration before enabling LDAP.
+5. Do not use LDAP without transport encryption. The integration deliberately rejects ldap://.
+
+## Configuration
+
+Add to **deploy/.env** (not Git), for example:
+
+~~~dotenv
+SAG_CE_LDAP_ENABLED=true
+SAG_CE_LDAP_URL=ldaps://dc01.example.internal:636
+SAG_CE_LDAP_DOMAIN=example.internal
+SAG_CE_LDAP_NETBIOS_DOMAIN=EXAMPLE
+SAG_CE_LDAP_BASE_DN=DC=example,DC=internal
+SAG_CE_LDAP_ALLOWED_GROUP_DN=CN=SAG-CE-Operators,OU=Groups,DC=example,DC=internal
+SAG_CE_LDAP_CA_FILE=/etc/sag/ca/ad-ca.pem
+~~~
+
+For a private CA, place its PEM certificate at deploy/ca/ad-ca.pem on the host (ignored by Git). The folder is mounted read-only in the app container at /etc/sag/ca. If the domain controller uses a publicly trusted certificate, leave SAG_CE_LDAP_CA_FILE empty to use the system CA store.
+
+Apply changes:
+
+~~~bash
+mkdir -p deploy/ca && chmod 700 deploy/ca
+docker compose --env-file deploy/.env -f deploy/compose.yaml up -d --build
+docker compose --env-file deploy/.env -f deploy/compose.yaml exec app php artisan migrate --force
+docker compose --env-file deploy/.env -f deploy/compose.yaml exec app php artisan config:clear
+~~~
+
+**A production change should run migrations before setting SAG_CE_LDAP_ENABLED=true.** Do not publish LDAP settings or CA private keys. Only the public CA certificate belongs in deploy/ca.
+
+## Login
+
+Accepted AD identities:
+
+- samAccountName: alice (binds as alice@example.internal)
+- UPN: alice@example.internal (the suffix must match SAG_CE_LDAP_DOMAIN)
+- NETBIOS\samAccountName: EXAMPLE\alice (requires the NETBIOS setting)
+
+A local Operator logs in with their email address and local password. The login form never falls back from a failed local password to an AD login of the same email; email collisions with the local Operator are rejected. AD users never have a usable local password.
+
+On successful LDAPS bind and authorization-group lookup, the user's AD objectGUID is linked to a locally stored profile; no AD password or LDAP service-account password is persisted. Account changes are correlated by objectGUID. Any locally deactivated AD profile remains blocked even when AD permits a bind.
+
+Every new AD user must enroll TOTP MFA. Existing TOTP and recovery codes belong to their individual profile.
+
+## Security boundaries
+
+- Member removal and AD account disablement are checked **at the next password sign-in**, not continuously for existing Laravel sessions. In emergency revoke the web session in the Laravel session store (or restart app/session storage), disable the user locally, and terminate their active DB gateway sessions.
+- Operator role is intentionally all-or-nothing. The CE integration does not provide per-resource grants. Do **not** assign a broad AD group.
+- Trust the issuing CA; never disable certificate verification to make LDAPS work.
+- Domain sign-in controls **web console access only**. It does not implement integrated Windows authentication for PostgreSQL, MySQL or MSSQL.
+- The known gateway protocol/TLS and SQL audit limitations remain independent of this feature. Do not treat enabling LDAPS as remediation for DB-client transport security.

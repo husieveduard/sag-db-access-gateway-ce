@@ -20,9 +20,10 @@
             <input
                 id="email"
                 name="email"
-                type="email"
+                type="text"
                 value="{{ old('email') }}"
                 autocomplete="username"
+                placeholder="operator@example.com or DOMAIN\\user"
                 required
                 autofocus
             >
@@ -42,7 +43,7 @@
         </form>
 
         <p class="note">
-            {{ __('auth.login.note_before') }} <code>admin</code>.
+            {{ __('auth.login.note_before') }} <code>admin</code>. @if (config('sag.ldap.enabled')) AD: UPN, login або DOMAIN\login. @endif
         </p>
     </section>
 </div>

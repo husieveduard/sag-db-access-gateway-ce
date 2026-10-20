@@ -62,11 +62,13 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         git \
         libonig-dev \
+        libldap2-dev \
         libpq-dev \
         libzip-dev \
         unzip \
     && docker-php-ext-install -j"$(nproc)" \
         bcmath \
+        ldap \
         mbstring \
         opcache \
         pcntl \
