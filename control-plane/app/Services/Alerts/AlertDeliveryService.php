@@ -12,6 +12,11 @@ class AlertDeliveryService
 {
     public function deliver(int $limit = 50): int
     {
+        // Recover interrupted sends; at-least-once delivery requires idempotent receivers.
+        AlertDelivery::query()->where('status', 'sending')
+            ->where('updated_at', '<', now()->subMinutes(5))
+            ->update(['status' => 'retry', 'next_attempt_at' => now()]);
+
         $items = AlertDelivery::query()->with('alert.rule')
             ->whereIn('status', ['queued', 'retry'])
             ->where('next_attempt_at', '<=', now())
