@@ -33,7 +33,7 @@ SAG DB Access Gateway CE provides a lightweight control plane for temporary and 
 
 SAG DB Access Gateway CE intentionally remains simple.
 
-* Multiple administrators can access CE; all have the same administrative role.
+* CE has two administrator roles: `admin` (own resources, sessions, and audit) and `superadmin` (global visibility and role management).
 * Local administrators are created interactively by the CLI command; domain administrators authenticate through an authorized AD group.
 * Operator credentials are never stored in Git, Docker Compose, or `deploy/.env`.
 * MFA enrollment is mandatory during the first web login.

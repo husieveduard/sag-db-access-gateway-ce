@@ -2,7 +2,7 @@
 
 SAG DB Access Gateway CE can authenticate web-console users against **Microsoft Active Directory via LDAPS (TCP/636)**. This is separate from SAG Enterprise. It is not AD single sign-on, Kerberos DB authentication, Vault, or resource-level RBAC.
 
-**Authorization model:** members of one explicitly configured AD security group receive the existing CE Operator role (all CE resources). Nested AD groups are evaluated using the AD transitive membership matching rule. Local break-glass administrators remain available; `sag:ce-create-admin` may be repeated with different email addresses. Each AD user gets their own local profile and **their own mandatory TOTP MFA**. Target database credentials are still supplied directly to the DB client.
+**Authorization model:** members of one explicitly configured AD security group receive CE `admin` rights scoped to their own resources, sessions, and audit. A `superadmin` can promote an existing AD administrator in the web console. Nested AD groups are evaluated using the AD transitive membership matching rule. Local break-glass administrators remain available; `sag:ce-create-admin` may be repeated with different email addresses. Each AD user gets their own local profile and **their own mandatory TOTP MFA**. Target database credentials are still supplied directly to the DB client.
 
 ## Preconditions
 
@@ -56,7 +56,7 @@ Every new AD administrator must enroll personal TOTP MFA. There is no fixed numb
 ## Security boundaries
 
 - Member removal and AD account disablement are checked **at the next password sign-in**, not continuously for existing Laravel sessions. In emergency revoke the web session in the Laravel session store (or restart app/session storage), disable the user locally, and terminate their active DB gateway sessions.
-- Operator role is intentionally all-or-nothing. The CE integration does not provide per-resource grants. Do **not** assign a broad AD group.
+- `admin` is limited to self-owned resources, sessions, and their own audit events; `superadmin` has global access. Restrict the AD group to trusted administrators.
 - Trust the issuing CA; never disable certificate verification to make LDAPS work.
 - Domain sign-in controls **web console access only**. It does not implement integrated Windows authentication for PostgreSQL, MySQL or MSSQL.
 - The known gateway protocol/TLS and SQL audit limitations remain independent of this feature. Do not treat enabling LDAPS as remediation for DB-client transport security.
