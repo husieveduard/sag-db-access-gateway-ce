@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Alert;
 use App\Models\AlertRule;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
@@ -31,12 +32,21 @@ class AlertController extends Controller
             || (int) $alert->owner_user_id === (int) $request->user()->id, 404);
 
         $data = $request->validate(['status' => ['required', Rule::in(['acknowledged', 'investigating', 'resolved'])]]);
+        $previousStatus = $alert->status;
         $alert->forceFill([
             'status' => $data['status'],
             'assigned_user_id' => $request->user()->id,
             'acknowledged_at' => $alert->acknowledged_at ?? now(),
             'resolved_at' => $data['status'] === 'resolved' ? now() : null,
         ])->save();
+
+        DB::table('alert_history')->insert([
+            'alert_id' => $alert->id,
+            'actor_user_id' => $request->user()->id,
+            'from_status' => $previousStatus,
+            'to_status' => $data['status'],
+            'created_at' => now(),
+        ]);
 
         return back()->with('success', __('alerts.updated'));
     }
