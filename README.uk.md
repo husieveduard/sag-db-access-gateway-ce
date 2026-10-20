@@ -25,7 +25,7 @@ SAG DB Access Gateway CE — це легкий control plane для тимчас
 * SQL audit із базовою класифікацією ризику.
 * Ручне завершення сесій.
 * Автоматичне завершення тимчасових сесій після TTL.
-* Один локальний CE Operator.
+* Локальні адміністратори та опційна авторизація адміністраторів через Microsoft AD/LDAPS.
 * Обов’язкове TOTP MFA з QR-налаштуванням і recovery codes.
 * Аварійне скидання MFA та пароля через локальні консольні команди.
 * Docker Compose deployment для чистого сервера.
@@ -34,8 +34,8 @@ SAG DB Access Gateway CE — це легкий control plane для тимчас
 
 SAG DB Access Gateway CE навмисно залишається простим.
 
-* Одночасно може існувати лише один активний CE Operator.
-* Початковий Operator створюється інтерактивно після інсталяції.
+* CE підтримує кількох адміністраторів з однаковими правами.
+* Локальні адміністратори створюються через CLI; доменні входять через дозволену групу Active Directory.
 * Облікові дані Operator-а не зберігаються у Git, Docker Compose або `deploy/.env`.
 * Налаштування MFA є обов’язковим під час першого web-входу.
 * TOTP secrets шифруються Laravel.
@@ -45,7 +45,7 @@ SAG DB Access Gateway CE навмисно залишається простим.
 * Internal gateway API доступний лише з Docker network.
 * CE web console прив’язана до localhost і має публікуватися через HTTPS reverse proxy.
 
-Community Edition не містить складних RBAC-матриць, workflow погодження, LDAP, Active Directory, SSO, Vault, SSH/RDP access, Guacamole або інтеграцій з Incident Manager.
+Community Edition не містить складних RBAC-матриць, workflow погодження, SSO, Vault, SSH/RDP access, Guacamole або інтеграцій з Incident Manager. Опційний AD/LDAPS вхід адміністраторів описано в [документації](docs/ACTIVE_DIRECTORY.md).
 
 ## Архітектура
 
@@ -169,7 +169,7 @@ Confirm initial password:
 
 Пароль має містити щонайменше 14 символів, великі та малі літери й цифру.
 
-Дозволено лише одного активного CE Operator-а. Команда відмовиться створювати ще одного активного користувача.
+Команду можна повторювати для створення локальних адміністраторів з унікальними email. Кожен адміністратор має власне обов’язкове MFA. Доменний вхід доступний лише членам дозволеної AD-групи.
 
 ## Перший вхід і MFA
 
@@ -416,7 +416,7 @@ docker compose \
 * SSH, RDP і web-access gateway.
 * Складні multi-user RBAC policy matrices.
 * Approval workflows.
-* LDAP, Active Directory, SSO і SCIM.
+* Enterprise-синхронізація LDAP, SSO і SCIM (у CE доступний опційний AD/LDAPS вхід адміністраторів).
 * Vault і managed credential rotation.
 * Incident Manager integration.
 * Proprietary company integrations.

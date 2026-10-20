@@ -2,7 +2,7 @@
 
 SAG DB Access Gateway CE can authenticate web-console users against **Microsoft Active Directory via LDAPS (TCP/636)**. This is separate from SAG Enterprise. It is not AD single sign-on, Kerberos DB authentication, Vault, or resource-level RBAC.
 
-**Authorization model:** members of one explicitly configured AD security group receive the existing CE Operator role (all CE resources). Nested AD groups are evaluated using the AD transitive membership matching rule. A local break-glass Operator remains available; only one **local** CE Operator can be created by the CLI command. Each AD user gets their own local profile and **their own mandatory TOTP MFA**. Target database credentials are still supplied directly to the DB client.
+**Authorization model:** members of one explicitly configured AD security group receive the existing CE Operator role (all CE resources). Nested AD groups are evaluated using the AD transitive membership matching rule. Local break-glass administrators remain available; `sag:ce-create-admin` may be repeated with different email addresses. Each AD user gets their own local profile and **their own mandatory TOTP MFA**. Target database credentials are still supplied directly to the DB client.
 
 ## Preconditions
 
@@ -51,7 +51,7 @@ A local Operator logs in with their email address and local password. The login 
 
 On successful LDAPS bind and authorization-group lookup, the user's AD objectGUID is linked to a locally stored profile; no AD password or LDAP service-account password is persisted. Account changes are correlated by objectGUID. Any locally deactivated AD profile remains blocked even when AD permits a bind.
 
-Every new AD user must enroll TOTP MFA. Existing TOTP and recovery codes belong to their individual profile.
+Every new AD administrator must enroll personal TOTP MFA. There is no fixed number of administrators. Existing TOTP and recovery codes belong to their individual profile.
 
 ## Security boundaries
 

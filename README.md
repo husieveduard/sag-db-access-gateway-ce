@@ -24,7 +24,7 @@ SAG DB Access Gateway CE provides a lightweight control plane for temporary and 
 * SQL query audit with basic risk classification.
 * Manual session termination.
 * Automatic TTL expiration cleanup.
-* One local CE Operator.
+* Local administrators and optional Microsoft Active Directory administrators via LDAPS.
 * Mandatory TOTP MFA with QR enrollment and recovery codes.
 * Emergency MFA reset and password reset through local console commands.
 * Docker Compose deployment for a clean server.
@@ -33,8 +33,8 @@ SAG DB Access Gateway CE provides a lightweight control plane for temporary and 
 
 SAG DB Access Gateway CE intentionally remains simple.
 
-* Only one active CE Operator can exist at a time.
-* The initial Operator is created interactively after installation.
+* Multiple administrators can access CE; all have the same administrative role.
+* Local administrators are created interactively by the CLI command; domain administrators authenticate through an authorized AD group.
 * Operator credentials are never stored in Git, Docker Compose, or `deploy/.env`.
 * MFA enrollment is mandatory during the first web login.
 * TOTP secrets are encrypted by Laravel.
@@ -44,7 +44,7 @@ SAG DB Access Gateway CE intentionally remains simple.
 * Internal gateway API paths are accessible only from the Docker network.
 * The CE web console is bound to localhost and must be exposed through HTTPS reverse proxy.
 
-This Community Edition does not include complex RBAC matrices, approval workflows, LDAP, Active Directory, SSO, Vault, SSH/RDP access, Guacamole, or Incident Manager integrations.
+This Community Edition does not include complex RBAC matrices, approval workflows, SSO, Vault, SSH/RDP access, Guacamole, or Incident Manager integrations. AD/LDAPS sign-in for CE administrators is optional; see [Active Directory setup](docs/ACTIVE_DIRECTORY.md).
 
 ## Architecture
 
@@ -168,7 +168,7 @@ Confirm initial password:
 
 The password must contain at least 14 characters, uppercase letters, lowercase letters, and a digit.
 
-Only one active CE Operator is allowed. The command refuses to create another active Operator.
+The CLI command can create additional local administrators with unique email addresses. Each administrator has individual mandatory MFA. AD administrators are admitted only when they belong to the configured AD security group.
 
 ## First login and MFA
 
@@ -415,7 +415,7 @@ Excluded:
 * SSH, RDP, and web-access gateway.
 * Complex multi-user RBAC policy matrices.
 * Approval workflows.
-* LDAP, Active Directory, SSO, and SCIM.
+* Enterprise identity federation, SSO, and SCIM (CE supports optional AD/LDAPS authentication for administrators).
 * Vault and managed credential rotation.
 * Incident Manager integration.
 * Proprietary company integrations.

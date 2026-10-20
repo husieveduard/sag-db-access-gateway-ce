@@ -20,7 +20,7 @@ It is intended for small teams, internal environments, pilot deployments, and us
 * Basic SQL risk classification.
 * Manual session termination.
 * Automatic expiration cleanup for TTL sessions.
-* One active local CE Operator.
+* Multiple local administrators and optional AD/LDAPS administrator login.
 * Mandatory QR/TOTP MFA.
 * Recovery codes.
 * Local password reset and emergency MFA reset through CLI.
@@ -45,8 +45,8 @@ They are intended for controlled service-style use cases such as monitoring, rep
 
 CE uses a simplified operational model:
 
-* one active local Operator;
-* no self-service user registration;
+* multiple local or AD administrators with the same CE-wide permissions;
+* local administrators created via trusted CLI, and domain administrators provisioned only after successful AD authentication and authorized-group verification;
 * no complex role hierarchy;
 * no approval workflow;
 * no per-user resource grant matrix.
@@ -61,7 +61,7 @@ The CE public release does not include:
 * Apache Guacamole;
 * multi-user RBAC policy matrices;
 * approval workflow;
-* LDAP, Active Directory, SSO, SCIM, or federation;
+* Enterprise directory provisioning, SSO, SCIM, or federation (CE supports optional AD/LDAPS password sign-in);
 * credential Vault;
 * password rotation;
 * managed target DB credentials;

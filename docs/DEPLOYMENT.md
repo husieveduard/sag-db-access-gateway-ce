@@ -81,7 +81,7 @@ docker compose \
 
 The command requests an email, display name, and password.
 
-Only one active CE Operator is allowed. MFA setup is mandatory when that Operator first opens the web console.
+Additional local CE administrators can be created using the same command with unique email addresses. Each requires individual MFA. For optional AD administrator login, see [Active Directory setup](ACTIVE_DIRECTORY.md).
 
 ## HTTPS reverse proxy
 
