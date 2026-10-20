@@ -6,6 +6,7 @@ use App\Http\Controllers\Admin\ResourceController;
 use App\Http\Controllers\Admin\SessionController;
 use App\Http\Controllers\Admin\AdministratorController;
 use App\Http\Controllers\Admin\AuditController;
+use App\Http\Controllers\Admin\AlertController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\MfaController;
 use Illuminate\Http\Request;
@@ -69,6 +70,10 @@ Route::middleware(['auth', 'ce.admin', 'ce.mfa'])
         Route::get('/administrators', [AdministratorController::class, 'index'])->name('administrators.index');
         Route::post('/administrators/{user}/role', [AdministratorController::class, 'updateRole'])->name('administrators.role');
         Route::get('/audit', AuditController::class)->name('audit.index');
+        Route::get('/alerts', [AlertController::class, 'index'])->name('alerts.index');
+        Route::post('/alerts/{alert}/status', [AlertController::class, 'updateStatus'])->name('alerts.status');
+        Route::get('/alert-rules', [AlertController::class, 'rules'])->name('alert-rules.index');
+        Route::post('/alert-rules/{rule}', [AlertController::class, 'updateRule'])->name('alert-rules.update');
 
         Route::get('/dashboard', DashboardController::class)
             ->name('dashboard');

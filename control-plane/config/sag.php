@@ -15,6 +15,11 @@ return [
         'ca_file' => env('SAG_CE_LDAP_CA_FILE', ''),
     ],
 
+    'alerts' => [
+        'webhook_url' => env('SAG_CE_ALERT_WEBHOOK_URL', ''),
+        'email_to' => env('SAG_CE_ALERT_EMAIL_TO', ''),
+    ],
+
     'supported_locales' => [
         'uk' => 'Українська',
         'en' => 'English',

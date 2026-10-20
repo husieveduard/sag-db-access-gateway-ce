@@ -9,6 +9,8 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 
+Schedule::command('sag:process-alerts')->everyMinute()->withoutOverlapping()->runInBackground();
+
 if (config('sag.db_gateway.maintenance_schedule_enabled', true)) {
     Schedule::command('sag:cleanup-expired')
         ->everyMinute()
