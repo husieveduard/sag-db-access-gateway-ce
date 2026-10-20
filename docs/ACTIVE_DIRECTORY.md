@@ -37,7 +37,7 @@ docker compose --env-file deploy/.env -f deploy/compose.yaml exec app php artisa
 docker compose --env-file deploy/.env -f deploy/compose.yaml exec app php artisan config:clear
 ~~~
 
-**A production change should run migrations before setting SAG_CE_LDAP_ENABLED=true.** Do not publish LDAP settings or CA private keys. Only the public CA certificate belongs in deploy/ca.
+**A production change should first deploy with SAG_CE_LDAP_ENABLED=false, run migrations, then enable it and recreate the app container.** Do not publish LDAP settings or CA private keys. Only the public CA certificate belongs in deploy/ca.
 
 ## Login
 
