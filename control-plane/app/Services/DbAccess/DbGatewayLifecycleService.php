@@ -127,12 +127,18 @@ class DbGatewayLifecycleService
 
         $session->refresh();
 
+        $startTicks = $this->processStartTicks($pid);
+        if ($startTicks === null) {
+            $this->markStartFailed($session, 'gateway_process_identity_unavailable');
+            throw new RuntimeException('Gateway process start time could not be verified.');
+        }
+
         $metadata = is_array($session->metadata) ? $session->metadata : [];
         $metadata['db'] = array_merge(
             is_array(data_get($metadata, 'db')) ? data_get($metadata, 'db') : [],
             [
                 'gateway_pid' => $pid,
-                'gateway_proc_start_ticks' => $this->processStartTicks($pid),
+                'gateway_proc_start_ticks' => $startTicks,
                 'gateway_log_path' => $logFile,
                 'gateway_started_at' => now()->toIso8601String(),
             ],
