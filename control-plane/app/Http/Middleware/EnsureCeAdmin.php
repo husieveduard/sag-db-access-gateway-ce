@@ -14,7 +14,7 @@ class EnsureCeAdmin
         abort_unless(
             $user
                 && $user->is_active
-                && $user->role === 'admin',
+                && $user->isCeAdministrator(),
             403,
             'Administrator access is required.'
         );
