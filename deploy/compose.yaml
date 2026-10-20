@@ -114,7 +114,7 @@ services:
     environment: *app-environment
     volumes:
       - sag_db_ce_storage:/var/www/html/storage
-      - ./ca:/etc/sag/ca:ro
+      - ./deploy/ca:/etc/sag/ca:ro
     depends_on:
       postgres:
         condition: service_healthy
