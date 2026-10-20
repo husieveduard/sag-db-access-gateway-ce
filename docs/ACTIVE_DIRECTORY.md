@@ -26,15 +26,17 @@ SAG_CE_LDAP_ALLOWED_GROUP_DN=CN=SAG-CE-Operators,OU=Groups,DC=example,DC=interna
 SAG_CE_LDAP_CA_FILE=/etc/sag/ca/ad-ca.pem
 ~~~
 
-For a private CA, place its PEM certificate at deploy/ca/ad-ca.pem on the host (ignored by Git). The folder is mounted read-only in the app container at /etc/sag/ca. If the domain controller uses a publicly trusted certificate, leave SAG_CE_LDAP_CA_FILE empty to use the system CA store.
+For a private CA, place its **public CA certificate only** at `deploy/ca/ad-ca.pem` on the host (ignored by Git). The folder is mounted read-only in the app container at `/etc/sag/ca` and is not the same as `control-plane/.env`. The app runs as the unprivileged `www-data` user, so the directory must be traversable and the public certificate readable (`0755` directory, `0644` certificate); never place a private key there. If the domain controller uses a publicly trusted certificate, leave SAG_CE_LDAP_CA_FILE empty to use the system CA store.
 
 Apply changes:
 
 ~~~bash
-mkdir -p deploy/ca && chmod 700 deploy/ca
-docker compose --env-file deploy/.env -f deploy/compose.yaml up -d --build
-docker compose --env-file deploy/.env -f deploy/compose.yaml exec app php artisan migrate --force
-docker compose --env-file deploy/.env -f deploy/compose.yaml exec app php artisan config:clear
+mkdir -p deploy/ca && chmod 755 deploy/ca
+# Once the PUBLIC CA certificate has been copied:
+chmod 644 deploy/ca/ad-ca.pem
+docker compose --project-directory "$PWD" --env-file deploy/.env -f deploy/compose.yaml up -d --build
+docker compose --project-directory "$PWD" --env-file deploy/.env -f deploy/compose.yaml exec app php artisan migrate --force
+docker compose --project-directory "$PWD" --env-file deploy/.env -f deploy/compose.yaml exec app php artisan config:clear
 ~~~
 
 **A production change should first deploy with SAG_CE_LDAP_ENABLED=false, run migrations, then enable it and recreate the app container.** Do not publish LDAP settings or CA private keys. Only the public CA certificate belongs in deploy/ca.
@@ -66,14 +68,14 @@ Every new AD administrator must enroll personal TOTP MFA. There is no fixed numb
 After enabling LDAP and applying migrations, run the read-only connectivity check:
 
 ~~~bash
-docker compose --env-file deploy/.env -f deploy/compose.yaml \
+docker compose --project-directory "$PWD" --env-file deploy/.env -f deploy/compose.yaml \
   exec app php artisan sag:ce-ad-check
 ~~~
 
 This checks TCP/TLS and validates the domain controller certificate and hostname without sending credentials. To additionally verify a specific AD administrator's password and required AD-group membership:
 
 ~~~bash
-docker compose --env-file deploy/.env -f deploy/compose.yaml \
+docker compose --project-directory "$PWD" --env-file deploy/.env -f deploy/compose.yaml \
   exec -it app php artisan sag:ce-ad-check --user='EXAMPLE\alice'
 ~~~
 
