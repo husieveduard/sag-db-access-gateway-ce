@@ -60,3 +60,32 @@ Every new AD administrator must enroll personal TOTP MFA. There is no fixed numb
 - Trust the issuing CA; never disable certificate verification to make LDAPS work.
 - Domain sign-in controls **web console access only**. It does not implement integrated Windows authentication for PostgreSQL, MySQL or MSSQL.
 - The known gateway protocol/TLS and SQL audit limitations remain independent of this feature. Do not treat enabling LDAPS as remediation for DB-client transport security.
+
+## Safe LDAPS verification on the CE host
+
+After enabling LDAP and applying migrations, run the read-only connectivity check:
+
+~~~bash
+docker compose --env-file deploy/.env -f deploy/compose.yaml \
+  exec app php artisan sag:ce-ad-check
+~~~
+
+This checks TCP/TLS and validates the domain controller certificate and hostname without sending credentials. To additionally verify a specific AD administrator's password and required AD-group membership:
+
+~~~bash
+docker compose --env-file deploy/.env -f deploy/compose.yaml \
+  exec -it app php artisan sag:ce-ad-check --user='EXAMPLE\alice'
+~~~
+
+The command requests the AD password interactively without terminal echo; it does not save credentials or create a CE profile. A successful check does not validate the entire MFA web flow, which should be tested via HTTPS in the target environment.
+
+## Role and revocation acceptance checklist
+
+1. Sign in as an AD group member: create an individual `admin` profile, then enroll TOTP MFA.
+2. Sign in as the local `superadmin` and promote that AD admin in **Administrators**.
+3. Sign out, sign in to AD again and finish MFA; confirm the `superadmin` role is preserved.
+4. Verify that a different `admin` cannot access the promoted user's resources, sessions, or audit events through direct URLs.
+5. Remove the test AD account from the configured security group; its **next password sign-in** must fail.
+6. Verify that an existing logged-in AD web session does **not** automatically expire when the AD membership changes: to revoke immediately, disable the local profile and invalidate the web session. Active database gateway sessions require separate termination.
+
+**Important:** GitHub CI mocks AD and verifies application behavior only. Real certificate chain, network, bind, nested-group behavior and login MFA require tests against an actual domain controller.
