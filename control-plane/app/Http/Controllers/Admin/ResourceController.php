@@ -28,9 +28,10 @@ class ResourceController extends Controller
         'started',
     ];
 
-    public function index(): View
+    public function index(Request $request): View
     {
         $resources = DatabaseResource::query()
+            ->when(!$request->user()->isSuperAdmin(), fn ($q) => $q->where('created_by_user_id', $request->user()->id))
             ->with('createdBy:id,name,email')
             ->withCount([
                 'sessions',
@@ -92,6 +93,7 @@ class ResourceController extends Controller
 
     public function show(DatabaseResource $resource): View
     {
+        $this->authorizeResource($resource);
         $resource->load('createdBy:id,name,email');
 
         $resource->loadCount([
@@ -105,6 +107,7 @@ class ResourceController extends Controller
         $sessions = DbAccessSession::query()
             ->with('owner:id,name,email')
             ->where('resource_id', $resource->id)
+            ->when(!auth()->user()->isSuperAdmin(), fn ($q) => $q->where('owner_user_id', auth()->id()))
             ->withCount([
                 'connections as open_connections_count' => fn ($query) => $query
                     ->where('status', 'opened'),
@@ -116,6 +119,7 @@ class ResourceController extends Controller
         $auditEvents = AuditEvent::query()
             ->with('actor:id,name,email')
             ->where('resource_id', $resource->id)
+            ->when(!auth()->user()->isSuperAdmin(), fn ($q) => $q->where('actor_user_id', auth()->id()))
             ->latest('id')
             ->limit(100)
             ->get();
@@ -129,6 +133,7 @@ class ResourceController extends Controller
 
     public function edit(DatabaseResource $resource): View
     {
+        $this->authorizeResource($resource);
         $resource->loadCount([
             'sessions as active_sessions_count' => fn ($query) => $query
                 ->whereIn('status', self::ACTIVE_GATEWAY_STATUSES),
@@ -144,6 +149,7 @@ class ResourceController extends Controller
         Request $request,
         DatabaseResource $resource,
     ): RedirectResponse {
+        $this->authorizeResource($resource);
         $data = $this->validateResource($request, $resource);
 
         try {
@@ -231,6 +237,7 @@ class ResourceController extends Controller
         Request $request,
         DatabaseResource $resource,
     ): RedirectResponse {
+        $this->authorizeResource($resource);
         $data = $request->validate([
             'reason' => ['required', 'string', 'min:3', 'max:255'],
         ]);
@@ -290,6 +297,7 @@ class ResourceController extends Controller
         Request $request,
         DatabaseResource $resource,
     ): RedirectResponse {
+        $this->authorizeResource($resource);
         $data = $request->validate([
             'reason' => ['required', 'string', 'min:3', 'max:255'],
         ]);
@@ -336,6 +344,12 @@ class ResourceController extends Controller
         return redirect()
             ->route('admin.resources.show', $resource)
             ->with('success', __('messages.resources.activated'));
+    }
+
+    private function authorizeResource(DatabaseResource $resource): void
+    {
+        $user = auth()->user();
+        abort_unless($user->isSuperAdmin() || (int) $resource->created_by_user_id === (int) $user->id, 404);
     }
 
     private function validateResource(

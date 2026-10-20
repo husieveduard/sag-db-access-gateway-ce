@@ -27,7 +27,7 @@ class SagCeSetPassword extends Command
             return self::FAILURE;
         }
 
-        if (!$user->is_active || $user->role !== 'admin') {
+        if (!$user->is_active || $user->role !== 'admin' || $user->auth_source !== 'local') {
             $this->error('Password can be set only for an active administrator.');
 
             return self::FAILURE;

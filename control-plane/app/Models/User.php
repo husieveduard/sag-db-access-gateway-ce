@@ -38,7 +38,18 @@ class User extends Authenticatable
             'mfa_last_used_at' => 'datetime',
             'mfa_reset_at' => 'datetime',
             'mfa_recovery_codes' => 'array',
+            'auth_source' => 'string',
         ];
+    }
+
+    public function isSuperAdmin(): bool
+    {
+        return $this->role === 'superadmin';
+    }
+
+    public function isCeAdministrator(): bool
+    {
+        return in_array($this->role, ['admin', 'superadmin'], true);
     }
 
     public function ownedDbSessions(): HasMany

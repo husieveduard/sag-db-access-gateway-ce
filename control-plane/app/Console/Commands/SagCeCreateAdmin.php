@@ -15,7 +15,7 @@ class SagCeCreateAdmin extends Command
         {email? : Administrator email}
         {--name= : Display name of the CE Operator}';
 
-    protected $description = 'Create the initial local CE Operator account';
+    protected $description = 'Create a local CE administrator account';
 
     public function handle(): int
     {
@@ -38,20 +38,6 @@ class SagCeCreateAdmin extends Command
         if (Str::length($name) < 2 || Str::length($name) > 120) {
             $this->error(
                 'Operator display name must contain from 2 to 120 characters.'
-            );
-
-            return self::FAILURE;
-        }
-
-        $activeAdmin = User::query()
-            ->where('role', 'admin')
-            ->where('is_active', true)
-            ->first();
-
-        if ($activeAdmin) {
-            $this->error(
-                'An active CE Operator already exists: '
-                .$activeAdmin->email
             );
 
             return self::FAILURE;
@@ -105,7 +91,10 @@ class SagCeCreateAdmin extends Command
                 'name' => $name,
                 'email' => $email,
                 'password' => Hash::make($password),
-                'role' => 'admin',
+                'role' => User::query()->where('role', 'superadmin')->exists()
+                    ? 'admin'
+                    : 'superadmin',
+                'auth_source' => 'local',
                 'is_active' => true,
                 'is_service_account' => false,
                 'email_verified_at' => now(),
@@ -123,6 +112,7 @@ class SagCeCreateAdmin extends Command
                 'subject_user_id' => $user->id,
                 'subject_user_email' => $user->email,
                 'source' => 'console_command',
+                'auth_source' => 'local',
                 'mfa_required_on_first_login' => true,
             ],
             'occurred_at' => now(),

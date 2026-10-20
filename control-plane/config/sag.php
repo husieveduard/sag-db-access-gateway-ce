@@ -5,6 +5,16 @@ return [
 
     'internal_token' => env('SAG_INTERNAL_TOKEN'),
 
+    'ldap' => [
+        'enabled' => filter_var(env('SAG_CE_LDAP_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+        'url' => env('SAG_CE_LDAP_URL', ''),
+        'domain' => env('SAG_CE_LDAP_DOMAIN', ''),
+        'netbios_domain' => env('SAG_CE_LDAP_NETBIOS_DOMAIN', ''),
+        'base_dn' => env('SAG_CE_LDAP_BASE_DN', ''),
+        'allowed_group_dn' => env('SAG_CE_LDAP_ALLOWED_GROUP_DN', ''),
+        'ca_file' => env('SAG_CE_LDAP_CA_FILE', ''),
+    ],
+
     'supported_locales' => [
         'uk' => 'Українська',
         'en' => 'English',

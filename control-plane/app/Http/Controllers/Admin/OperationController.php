@@ -48,6 +48,8 @@ class OperationController extends Controller
         string $operationType,
         ?string $reason,
     ): RedirectResponse {
+        abort_unless($request->user()->isSuperAdmin() || (int) $session->owner_user_id === (int) $request->user()->id, 404);
+
         try {
             $operation = DB::transaction(function () use (
                 $request,

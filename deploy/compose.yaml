@@ -13,6 +13,13 @@ x-app-environment: &app-environment
   LOG_LEVEL: info
 
   SAG_EDITION: ce
+  SAG_CE_LDAP_ENABLED: ${SAG_CE_LDAP_ENABLED:-false}
+  SAG_CE_LDAP_URL: ${SAG_CE_LDAP_URL:-}
+  SAG_CE_LDAP_DOMAIN: ${SAG_CE_LDAP_DOMAIN:-}
+  SAG_CE_LDAP_NETBIOS_DOMAIN: ${SAG_CE_LDAP_NETBIOS_DOMAIN:-}
+  SAG_CE_LDAP_BASE_DN: ${SAG_CE_LDAP_BASE_DN:-}
+  SAG_CE_LDAP_ALLOWED_GROUP_DN: ${SAG_CE_LDAP_ALLOWED_GROUP_DN:-}
+  SAG_CE_LDAP_CA_FILE: ${SAG_CE_LDAP_CA_FILE:-}
   SAG_INTERNAL_TOKEN: ${SAG_CE_INTERNAL_TOKEN}
   SAG_GATEWAY_CONTROL_PLANE_URL: http://nginx
   SAG_DB_GATEWAY_BINARY: /usr/local/bin/sag-db-gateway
@@ -107,6 +114,7 @@ services:
     environment: *app-environment
     volumes:
       - sag_db_ce_storage:/var/www/html/storage
+      - ./deploy/ca:/etc/sag/ca:ro
     depends_on:
       postgres:
         condition: service_healthy

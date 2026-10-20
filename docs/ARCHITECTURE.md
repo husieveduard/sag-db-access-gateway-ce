@@ -4,7 +4,7 @@
 
 SAG DB Access Gateway CE separates the **control plane** from the **database data plane**.
 
-The control plane manages DB resources, access sessions, lifecycle operations, audit events, MFA, and the local CE Operator. The data plane is a Go gateway process that listens on a dynamic TCP port and proxies database protocol traffic to a target database.
+The control plane manages DB resources, access sessions, lifecycle operations, audit events, MFA, and CE administrator accounts. The data plane is a Go gateway process that listens on a dynamic TCP port and proxies database protocol traffic to a target database.
 
 ```text
 Browser
@@ -44,7 +44,7 @@ The Laravel control plane provides:
 * Automatic expiration of TTL-based sessions.
 * Internal API endpoints used by Go gateway processes.
 
-The CE edition intentionally supports one active local Operator. It does not implement a granular RBAC matrix, approval workflow, LDAP, Active Directory, SSO, Vault, or managed credential rotation.
+The CE edition supports multiple local or AD/LDAPS administrators with the same CE-wide privileges. It does not implement resource-level RBAC, approval workflows, enterprise SSO, Vault, or managed credential rotation.
 
 ## Data plane
 

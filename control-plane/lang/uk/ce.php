@@ -9,10 +9,14 @@ return [
         'dashboard' => 'Панель керування',
         'resources' => 'Ресурси БД',
         'sessions' => 'Сесії',
+        'administrators' => 'Адміністратори',
+        'audit' => 'Журнал дій',
     ],
 
     'role' => [
         'operator' => 'Оператор',
+        'admin' => 'Адміністратор',
+        'superadmin' => 'Суперадміністратор',
     ],
 
     'language' => 'Мова',

@@ -9,10 +9,14 @@ return [
         'dashboard' => 'Dashboard',
         'resources' => 'Database resources',
         'sessions' => 'Sessions',
+        'administrators' => 'Administrators',
+        'audit' => 'Audit log',
     ],
 
     'role' => [
         'operator' => 'Operator',
+        'admin' => 'Administrator',
+        'superadmin' => 'Super administrator',
     ],
 
     'language' => 'Language',

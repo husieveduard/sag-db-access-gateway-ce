@@ -46,6 +46,7 @@ class SessionController extends Controller
         $sessionTable = (new DbAccessSession())->getTable();
 
         $sessions = DbAccessSession::query()
+            ->when(!$request->user()->isSuperAdmin(), fn ($q) => $q->where('owner_user_id', $request->user()->id))
             ->select($sessionTable.'.*')
             ->addSelect([
                 'last_failed_operation_uid' => DbAccessOperation::query()
@@ -91,9 +92,10 @@ class SessionController extends Controller
         ]);
     }
 
-    public function create(): View
+    public function create(Request $request): View
     {
         $resources = DatabaseResource::query()
+            ->when(!$request->user()->isSuperAdmin(), fn ($q) => $q->where('created_by_user_id', $request->user()->id))
             ->where('is_active', true)
             ->orderBy('name')
             ->get([
@@ -158,6 +160,7 @@ class SessionController extends Controller
             ): DbAccessSession {
                 $resource = DatabaseResource::query()
                     ->whereKey($data['resource_id'])
+                    ->when(!$request->user()->isSuperAdmin(), fn ($q) => $q->where('created_by_user_id', $request->user()->id))
                     ->lockForUpdate()
                     ->first();
 
@@ -250,6 +253,7 @@ class SessionController extends Controller
 
     public function show(DbAccessSession $session): View
     {
+        abort_unless(auth()->user()->isSuperAdmin() || (int) $session->owner_user_id === (int) auth()->id(), 404);
         $session->load([
             'resource',
             'owner:id,name,email',
