@@ -344,16 +344,17 @@ class InternalDbGatewayController extends Controller
             'statement_type' => Str::upper($data['query_type'] ?? 'UNKNOWN'),
             'risk_level' => $risk,
             'risk_reason' => $reason ?: null,
-            'sql_text' => $data['query_text_masked']
-                ?? $data['normalized_sql']
-                ?? null,
+            // Treat internal gateway input as untrusted. Do not persist SQL text
+            // even if a gateway claims that it was masked or normalized.
+            'sql_text' => null,
             'sql_hash' => $data['query_hash'] ?? null,
-            'sql_redacted' => !empty($data['query_text_masked']),
+            'sql_redacted' => true,
             'query_status' => $queryStatus,
             'duration_ms' => $data['duration_ms'] ?? null,
             'rows_affected' => $data['rows_affected'] ?? null,
             'error_code' => $data['error_code'] ?? null,
-            'error_message' => $data['error_message_masked'] ?? null,
+            // Backend errors can contain SQL literals, connection strings and PII.
+            'error_message' => null,
             'occurred_at' => $this->eventTimestamp(
                 $data['ended_at'] ?? $data['started_at'] ?? null
             ),
