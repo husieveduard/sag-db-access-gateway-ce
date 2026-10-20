@@ -181,6 +181,7 @@ class DbGatewayLifecycleService
         $session->forceFill([
             'status' => 'stopping',
             'termination_reason' => $reason,
+            'terminated_by_user_id' => $actorUserId,
             'last_activity_at' => now(),
         ])->save();
 
@@ -394,9 +395,9 @@ class DbGatewayLifecycleService
         $expectedBinary = basename((string) config('sag.db_gateway.binary', ''));
 
         if (
-            $cmdline !== ''
-            && !str_contains($cmdline, $expectedBinary)
-            && !str_contains($cmdline, 'sag-db-gateway')
+            $cmdline === ''
+            || (!str_contains($cmdline, $expectedBinary)
+            && !str_contains($cmdline, 'sag-db-gateway'))
         ) {
             return [
                 'pid' => $pid,
