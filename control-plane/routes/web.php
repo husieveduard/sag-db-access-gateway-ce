@@ -4,6 +4,8 @@ use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\OperationController;
 use App\Http\Controllers\Admin\ResourceController;
 use App\Http\Controllers\Admin\SessionController;
+use App\Http\Controllers\Admin\AdministratorController;
+use App\Http\Controllers\Admin\AuditController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\MfaController;
 use Illuminate\Http\Request;
@@ -64,6 +66,10 @@ Route::middleware(['auth', 'ce.admin', 'ce.mfa'])
     ->prefix('admin')
     ->as('admin.')
     ->group(function (): void {
+        Route::get('/administrators', [AdministratorController::class, 'index'])->name('administrators.index');
+        Route::post('/administrators/{user}/role', [AdministratorController::class, 'updateRole'])->name('administrators.role');
+        Route::get('/audit', AuditController::class)->name('audit.index');
+
         Route::get('/dashboard', DashboardController::class)
             ->name('dashboard');
 
