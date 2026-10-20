@@ -17,7 +17,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	"unicode/utf16"
 )
 
 type CurrentQuery struct {
@@ -583,71 +582,61 @@ func (a *MySQLAdapter) backendToClient(backend net.Conn, client net.Conn, state 
 
 /*
 |--------------------------------------------------------------------------
-| MSSQL / TDS adapter
+| Microsoft SQL Server / opaque TDS 7.x and TDS 8.0 transport
 |--------------------------------------------------------------------------
+|
+| TDS 7.x can wrap TLS negotiation in PRELOGIN (0x12) frames. TDS 8.0
+| starts with native TLS bytes before any TDS packet. Packet parsing here
+| breaks modern encrypted drivers, so we relay bytes without interpreting
+| or rewriting either handshake. Certificate and encryption enforcement
+| belong to the SQL Server and client; this proxy does NOT terminate TLS.
+|
+| SQL and RPC statements CANNOT be audited inside encrypted streams.
+| Only connection metadata and byte counts are emitted in this mode.
 */
 
 type MSSQLAdapter struct{}
 
 func (a *MSSQLAdapter) Engine() string { return "mssql" }
-func (a *MSSQLAdapter) Mode() string   { return "mssql-aware-tds-sqlbatch-audit" }
+func (a *MSSQLAdapter) Mode() string   { return "mssql-opaque-tls-passthrough-metadata-only" }
 
 func (a *MSSQLAdapter) Proxy(client net.Conn, backend net.Conn, state *ConnState) {
+	// No readTDSPacket or token parsing: arbitrary TLS records, PRELOGIN,
+	// LOGIN7, RPC and SQL Batch must pass through byte-for-byte.
+	relayOpaqueTCP(client, backend, state)
+}
+
+// relayOpaqueTCP copies both directions concurrently. It preserves a TCP
+// half-close when supported, then allows a bounded grace period for the
+// peer's final response. Closing both sockets releases copy goroutines.
+func relayOpaqueTCP(client net.Conn, backend net.Conn, state *ConnState) {
 	done := make(chan struct{}, 2)
 
-	go func() {
-		a.clientToBackend(client, backend, state)
+	relay := func(dst net.Conn, src net.Conn, count *uint64) {
+		n, _ := io.Copy(dst, src)
+		atomic.AddUint64(count, uint64(n))
+		if tcp, ok := dst.(interface{ CloseWrite() error }); ok {
+			_ = tcp.CloseWrite()
+		} else {
+			_ = dst.Close()
+		}
 		done <- struct{}{}
-	}()
+	}
 
-	go func() {
-		a.backendToClient(backend, client, state)
-		done <- struct{}{}
-	}()
+	go relay(backend, client, &state.bytesC2D)
+	go relay(client, backend, &state.bytesD2C)
 
 	<-done
-}
-
-func (a *MSSQLAdapter) clientToBackend(client net.Conn, backend net.Conn, state *ConnState) {
-	for {
-		packetType, payload, raw, err := readTDSPacket(client)
-		if err != nil {
-			return
-		}
-
-		// TDS SQLBatch packet type = 0x01.
-		// Payload is usually UCS-2LE SQL text after login.
-		if packetType == 0x01 && len(payload) > 0 {
-			sql := decodeUTF16LE(payload)
-			sql = strings.TrimSpace(sql)
-
-			if sql != "" {
-				beginQuery(state, "tds_sql_batch", sql, "", "")
-				log.Printf("mssql sqlbatch: %s", summarizeSQL(sql))
-			}
-		}
-
-		atomic.AddUint64(&state.bytesC2D, uint64(len(raw)))
-		if _, err := backend.Write(raw); err != nil {
-			return
-		}
+	select {
+	case <-done:
+	case <-time.After(30 * time.Second):
+		// A half-closed client can otherwise hold a gateway goroutine open
+		// indefinitely when the server never returns EOF.
 	}
-}
-
-func (a *MSSQLAdapter) backendToClient(backend net.Conn, client net.Conn, state *ConnState) {
-	for {
-		_, payload, raw, err := readTDSPacket(backend)
-		if err != nil {
-			return
-		}
-
-		parseTDSResponseTokens(payload, state)
-
-		atomic.AddUint64(&state.bytesD2C, uint64(len(raw)))
-		if _, err := client.Write(raw); err != nil {
-			return
-		}
-	}
+	_ = client.Close()
+	_ = backend.Close()
+	// Both relay goroutines have either already ended or will terminate
+	// after closing the sockets. They cannot continue forwarding data.
 }
 
 /*
@@ -1172,82 +1161,6 @@ func parseMySQLError(payload []byte) (string, string) {
 	}
 
 	return fmt.Sprintf("%d", code), string(payload[msgOffset:])
-}
-
-/*
-|--------------------------------------------------------------------------
-| MSSQL / TDS helpers
-|--------------------------------------------------------------------------
-*/
-
-func readTDSPacket(r io.Reader) (byte, []byte, []byte, error) {
-	header := make([]byte, 8)
-	if _, err := io.ReadFull(r, header); err != nil {
-		return 0, nil, nil, err
-	}
-
-	packetType := header[0]
-	length := int(binary.BigEndian.Uint16(header[2:4]))
-	if length < 8 || length > 64*1024*1024 {
-		return 0, nil, nil, fmt.Errorf("invalid tds packet length: %d", length)
-	}
-
-	payload := make([]byte, length-8)
-	if _, err := io.ReadFull(r, payload); err != nil {
-		return 0, nil, nil, err
-	}
-
-	raw := append(header, payload...)
-	return packetType, payload, raw, nil
-}
-
-func decodeUTF16LE(b []byte) string {
-	if len(b)%2 != 0 {
-		b = b[:len(b)-1]
-	}
-
-	u := make([]uint16, 0, len(b)/2)
-	for i := 0; i+1 < len(b); i += 2 {
-		u = append(u, binary.LittleEndian.Uint16(b[i:i+2]))
-	}
-
-	return string(utf16.Decode(u))
-}
-
-func parseTDSResponseTokens(payload []byte, state *ConnState) {
-	for i := 0; i < len(payload); {
-		token := payload[i]
-		i++
-
-		switch token {
-		case 0xaa: // ERROR token
-			if i+2 > len(payload) {
-				return
-			}
-			tokenLen := int(binary.LittleEndian.Uint16(payload[i : i+2]))
-			i += 2
-			if i+tokenLen > len(payload) {
-				return
-			}
-			msg := "MSSQL error"
-			updateCurrentQueryError(state, "TDS_ERROR", msg)
-			i += tokenLen
-
-		case 0xfd, 0xfe, 0xff: // DONE / DONEPROC / DONEINPROC
-			if i+12 > len(payload) {
-				return
-			}
-			rowCount := int64(binary.LittleEndian.Uint64(payload[i+4 : i+12]))
-			updateCurrentQueryCommand(state, "DONE", &rowCount)
-			finalizeCurrentQuery(state)
-			i += 12
-
-		default:
-			// Unknown token. Cannot safely parse length for every token in MVP.
-			// Stop parsing this packet but continue proxying traffic.
-			return
-		}
-	}
 }
 
 /*
