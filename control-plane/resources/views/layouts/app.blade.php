@@ -37,6 +37,10 @@
                         href="{{ route('admin.sessions.index') }}"
                         class="{{ request()->routeIs('admin.sessions.*') ? 'active' : '' }}"
                     >{{ __('ce.nav.sessions') }}</a>
+                    <a href="{{ route('admin.alerts.index') }}">{{ __('alerts.nav') }}</a>
+                    @if (auth()->user()->isSuperAdmin())
+                        <a href="{{ route('admin.alert-rules.index') }}">{{ __('alerts.rules_nav') }}</a>
+                    @endif
                     @if (auth()->user()->isSuperAdmin())
                         <a href="{{ route('admin.administrators.index') }}">{{ __('ce.nav.administrators') }}</a>
                     @endif
