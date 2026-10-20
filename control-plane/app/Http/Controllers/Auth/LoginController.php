@@ -12,8 +12,8 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
-use RuntimeException;
 use Illuminate\View\View;
+use RuntimeException;
 
 class LoginController extends Controller
 {
@@ -82,7 +82,8 @@ class LoginController extends Controller
                 if (($existing && ($existing->auth_source !== 'ldap' || !$existing->is_active))
                     || ($emailOwner && ($emailOwner->auth_source !== 'ldap'
                         || ($existing && $existing->id !== $emailOwner->id)
-                        || !$emailOwner->is_active))) {
+                        || !$emailOwner->is_active
+                        || ($emailOwner->ldap_guid !== null && $emailOwner->ldap_guid !== $ad['guid'])))) {
                     $reason = 'directory_identity_conflict';
                 } elseif ($existing && $emailOwner && $existing->id !== $emailOwner->id) {
                     $reason = 'directory_identity_conflict';
