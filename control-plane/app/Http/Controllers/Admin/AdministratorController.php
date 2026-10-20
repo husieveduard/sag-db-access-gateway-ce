@@ -34,16 +34,15 @@ class AdministratorController extends Controller
         abort_unless($user->isCeAdministrator(), 404);
 
         DB::transaction(function () use ($request, $user, $data): void {
-            $target = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+            // Lock a common row so concurrent role changes cannot demote all superadmins.
+            DB::table('users')->orderBy('id')->lockForUpdate()->get(['id']);
+            $target = User::query()->whereKey($user->id)->firstOrFail();
             $oldRole = $target->role;
             $newRole = $data['role'];
 
             if ($oldRole === $newRole) {
                 return;
             }
-
-            // Serialise role changes and protect the final active superadmin.
-            DB::table('users')->where('role', 'superadmin')->lockForUpdate()->get(['id']);
 
             if ($oldRole === 'superadmin' && $newRole === 'admin'
                 && $target->is_active
