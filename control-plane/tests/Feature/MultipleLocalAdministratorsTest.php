@@ -28,9 +28,11 @@ class MultipleLocalAdministratorsTest extends TestCase
 
         $this->assertSame(2, User::query()
             ->where('auth_source', 'local')
-            ->where('role', 'admin')
+            ->whereIn('role', ['admin', 'superadmin'])
             ->where('is_active', true)
             ->count());
+        $this->assertSame(1, User::query()->where('role', 'superadmin')->count());
+        $this->assertSame(1, User::query()->where('role', 'admin')->count());
         $this->assertSame(2, AuditEvent::query()
             ->where('event_type', 'auth.admin.created')
             ->count());
