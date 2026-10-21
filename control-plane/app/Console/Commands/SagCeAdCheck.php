@@ -15,10 +15,10 @@ class SagCeAdCheck extends Command
 
     public function handle(ActiveDirectoryAuthenticator $directory): int
     {
-        $ldap = (array) config('sag.ldap', []);
+        $ldap = app(\App\Services\Auth\AdSettings::class)->get();
 
         if (!($ldap['enabled'] ?? false)) {
-            $this->error('AD authentication is disabled (SAG_CE_LDAP_ENABLED=false).');
+            $this->error('AD authentication is disabled in the admin settings.');
 
             return self::FAILURE;
         }

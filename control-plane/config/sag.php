@@ -5,18 +5,7 @@ return [
 
     'internal_token' => env('SAG_INTERNAL_TOKEN'),
 
-    'ldap' => [
-        'enabled' => filter_var(env('SAG_CE_LDAP_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
-        'protocol' => env('SAG_CE_LDAP_PROTOCOL', 'ldaps'),
-        'allow_insecure' => filter_var(env('SAG_CE_LDAP_ALLOW_INSECURE', false), FILTER_VALIDATE_BOOLEAN),
-        'url' => env('SAG_CE_LDAP_URL', ''),
-        'domain' => env('SAG_CE_LDAP_DOMAIN', ''),
-        'netbios_domain' => env('SAG_CE_LDAP_NETBIOS_DOMAIN', ''),
-        'base_dn' => env('SAG_CE_LDAP_BASE_DN', ''),
-        'allowed_group_dn' => env('SAG_CE_LDAP_ALLOWED_GROUP_DN', ''),
-        'ca_file' => env('SAG_CE_LDAP_CA_FILE', ''),
-    ],
-
+    // AD configuration is persisted in ad_settings, not runtime environment.
     'alerts' => [
         'webhook_url' => env('SAG_CE_ALERT_WEBHOOK_URL', ''),
         'allowed_hosts' => env('SAG_CE_ALERT_ALLOWED_HOSTS', ''),

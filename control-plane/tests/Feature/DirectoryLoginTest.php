@@ -12,6 +12,19 @@ class DirectoryLoginTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // Legacy feature tests control directory availability through the
+        // existing config fixture. Production reads only ad_settings.
+        $this->app->instance(\App\Services\Auth\AdSettings::class, new class {
+            public function get(): array
+            {
+                return ['enabled' => (bool) config('sag.ldap.enabled', false)];
+            }
+        });
+    }
+
     public function test_ad_login_requires_enabled_directory(): void
     {
         config()->set('sag.ldap.enabled', false);

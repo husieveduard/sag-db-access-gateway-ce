@@ -43,6 +43,7 @@
                         <a href="{{ route('admin.alert-rules.index') }}">{{ __('alerts.rules_nav') }}</a>
                     @endif
                     @if (auth()->user()->isSuperAdmin())
+                        <a href="{{ route('admin.ad-settings.index') }}">Active Directory</a>
                         <a href="{{ route('admin.administrators.index') }}">{{ __('ce.nav.administrators') }}</a>
                     @endif
                     <a href="{{ route('admin.audit.index') }}">{{ __('ce.nav.audit') }}</a>
