@@ -31,7 +31,7 @@ class AlertChannelTest extends TestCase {
         config()->set('sag.alerts.webhook_url','https://localhost/alert');
         config()->set('sag.alerts.allowed_hosts','localhost');
         Http::fake();
-        $this->expectException(\\RuntimeException::class);
+        $this->expectException(\RuntimeException::class);
         app(ChannelSender::class)->send('webhook',['alert_id'=>2]);
     }
     public function test_generic_webhook_payload_has_no_sql_or_secrets(): void {
@@ -49,7 +49,7 @@ class AlertChannelTest extends TestCase {
         config()->set('sag.alerts.telegram_bot_token','000000000:fake');
         config()->set('sag.alerts.telegram_chat_id','12345678');
         Http::fake(['api.telegram.org/*'=>Http::response(['ok'=>false],200)]);
-        $this->expectException(\\RuntimeException::class);
+        $this->expectException(\RuntimeException::class);
         app(ChannelSender::class)->send('telegram',['alert_id'=>3]);
     }
 
