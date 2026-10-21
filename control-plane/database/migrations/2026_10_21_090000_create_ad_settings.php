@@ -12,7 +12,16 @@ return new class extends Migration {
   $protocol=(string)($old['protocol']??'ldaps');
   if(!in_array($protocol,['ldaps','starttls'],true)){$protocol='ldaps';}
   $port=(int)($parts['port']??($protocol==='ldaps'?636:389));
-  DB::table('ad_settings')->insert(['id'=>1,'enabled'=>(bool)($old['enabled']??false),'protocol'=>$protocol,'host'=>(string)($parts['host']??''),'port'=>$port,'domain'=>(string)($old['domain']??''),'netbios_domain'=>(string)($old['netbios_domain']??''),'base_dn'=>(string)($old['base_dn']??''),'allowed_group_dn'=>(string)($old['allowed_group_dn']??''),'updated_at'=>now()]);
+  $legacyCa=(string)env('SAG_CE_LDAP_CA_FILE','');
+  $caCopied=false;
+  if($legacyCa!=='' && is_readable($legacyCa)) {
+   $cert=(string)file_get_contents($legacyCa);
+   if(str_contains($cert,'-----BEGIN CERTIFICATE-----') && openssl_x509_read($cert)) {
+    \Illuminate\Support\Facades\Storage::disk('local')->put('ad-ca.pem',$cert);
+    $caCopied=true;
+   }
+  }
+  DB::table('ad_settings')->insert(['id'=>1,'enabled'=>(bool)($old['enabled']??false),'protocol'=>$protocol,'host'=>(string)($parts['host']??''),'port'=>$port,'domain'=>(string)($old['domain']??''),'netbios_domain'=>(string)($old['netbios_domain']??''),'base_dn'=>(string)($old['base_dn']??''),'allowed_group_dn'=>(string)($old['allowed_group_dn']??''),'ca_uploaded'=>$caCopied,'updated_at'=>now()]);
  }
  public function down(): void {Schema::dropIfExists('ad_settings');}
 };
