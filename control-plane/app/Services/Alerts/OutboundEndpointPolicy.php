@@ -10,7 +10,7 @@ use RuntimeException;
  */
 class OutboundEndpointPolicy
 {
-    public function assertAllowed(string $channel, string $url): void
+    public function assertAllowed(string $channel, string $url, ?string $allowedHosts = null): void
     {
         $parts = parse_url($url);
         if (!is_array($parts) || strtolower((string) ($parts['scheme'] ?? '')) !== 'https'
@@ -38,7 +38,7 @@ class OutboundEndpointPolicy
         // an exact administrator-maintained egress hostname allowlist.
         $approved = array_map(
             fn ($value) => strtolower(trim($value)),
-            explode(',', (string) config('sag.alerts.allowed_hosts', ''))
+            explode(',', (string) ($allowedHosts ?? config('sag.alerts.allowed_hosts', '')))
         );
         if (!in_array($host, $approved, true)) {
             throw new RuntimeException('unapproved_notification_host');
