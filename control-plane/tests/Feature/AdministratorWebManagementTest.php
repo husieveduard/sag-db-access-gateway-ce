@@ -179,6 +179,10 @@ class AdministratorWebManagementTest extends TestCase
 
         $this->login($ordinary)->get('/admin/alert-health')->assertForbidden();
         $page = $this->login($super)->get('/admin/alert-health')->assertOk();
+        $page->assertSee('Стан сповіщень')
+            ->assertSee('alert-health-stats')
+            ->assertSee('Необроблені події аудиту')
+            ->assertSee('Канали сповіщень');
         foreach (ChannelSender::CHANNELS as $channel) {
             $page->assertSee($channel);
         }

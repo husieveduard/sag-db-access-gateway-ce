@@ -12,6 +12,20 @@ class AdSettingsAdminTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_superadmin_can_view_responsive_ad_configuration_form(): void
+    {
+        $super = User::factory()->create();
+        $super->forceFill(['role' => 'superadmin', 'is_active' => true])->save();
+
+        $this->withoutMiddleware()->actingAs($super)
+            ->get('/admin/ad-settings')
+            ->assertOk()
+            ->assertSee('Параметри підключення')
+            ->assertSee('settings-form-grid')
+            ->assertSee('Перевірка TLS-з’єднання')
+            ->assertSee('name="allowed_group_dn"', false);
+    }
+
     public function test_settings_default_to_disabled_and_ldaps(): void
     {
         $settings = app(AdSettings::class)->get();
