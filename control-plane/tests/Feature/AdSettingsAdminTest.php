@@ -63,6 +63,7 @@ class AdSettingsAdminTest extends TestCase
             'port' => 389, 'domain' => 'example.local',
             'base_dn' => 'DC=example,DC=local',
             'allowed_group_dn' => 'CN=Operators,DC=example,DC=local',
-        ])->assertSessionHasErrors('protocol');
+        ])->assertRedirect();
+        $this->assertFalse(app(AdSettings::class)->get()['enabled']);
     }
 }
