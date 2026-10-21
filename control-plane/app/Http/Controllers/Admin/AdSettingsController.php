@@ -33,7 +33,7 @@ class AdSettingsController extends Controller {
   if($request->hasFile('ca_cert')){
    $pem=file_get_contents($request->file('ca_cert')->getRealPath());
    if(strlen($pem)>262144||!str_contains($pem,'-----BEGIN CERTIFICATE-----')||!openssl_x509_read($pem))return back()->withErrors(['ca_cert'=>'Invalid public CA certificate']);
-   Storage::disk('local')->put('private/ad-ca.pem',$pem);$uploaded=true;
+   Storage::disk('local')->put('ad-ca.pem',$pem);$uploaded=true;
   }
   $before=DB::table('ad_settings')->where('id',1)->first();
   DB::table('ad_settings')->where('id',1)->update([
