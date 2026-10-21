@@ -75,9 +75,30 @@ RUN apt-get update \
         pcntl \
         pdo_pgsql \
         zip \
-    && pecl install redis \
-    && docker-php-ext-enable redis \
     && rm -rf /var/lib/apt/lists/*
+
+# Compile from the upstream phpredis 6.3.0 source at a verified commit.
+# PECL download endpoints may return 504, making otherwise healthy builds fail.
+# Keep this in a separate Docker layer so PHP core extensions remain cached.
+RUN set -eux; \
+    for attempt in 1 2 3; do \
+        rm -rf /tmp/phpredis; \
+        if git clone --quiet --depth 1 --branch 6.3.0 \
+            https://github.com/phpredis/phpredis.git /tmp/phpredis; then \
+            break; \
+        fi; \
+        sleep 5; \
+    done; \
+    test "$(git -C /tmp/phpredis rev-parse HEAD)" = "df4fab2de7fc327c54c94a13af2b9542e4fbd720"; \
+    cd /tmp/phpredis; \
+    phpize; \
+    ./configure --enable-redis; \
+    make -j"$(nproc)"; \
+    make install; \
+    docker-php-ext-enable redis; \
+    php --ri redis; \
+    cd /; \
+    rm -rf /tmp/phpredis
 
 WORKDIR /var/www/html
 
