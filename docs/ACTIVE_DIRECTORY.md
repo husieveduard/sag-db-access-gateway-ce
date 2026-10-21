@@ -91,3 +91,15 @@ The command requests the AD password interactively without terminal echo; it doe
 6. Verify that an existing logged-in AD web session does **not** automatically expire when the AD membership changes: to revoke immediately, disable the local profile and invalidate the web session. Active database gateway sessions require separate termination.
 
 **Important:** GitHub CI mocks AD and verifies application behavior only. Real certificate chain, network, bind, nested-group behavior and login MFA require tests against an actual domain controller.
+
+## AD transport selection
+
+Choose `SAG_CE_LDAP_PROTOCOL` explicitly:
+
+| Mode | Example | Encryption |
+| --- | --- | --- |
+| `ldaps` (default) | `SAG_CE_LDAP_URL=ldaps://dc01.example.internal:636` | TLS from connection start |
+| `starttls` | `SAG_CE_LDAP_URL=ldap://dc01.example.internal:389` | Mandatory StartTLS **before** password bind |
+| `ldap` | `SAG_CE_LDAP_URL=ldap://dc01.example.internal:389` | Unencrypted; allowed only when APP_ENV is not production AND `SAG_CE_LDAP_ALLOW_INSECURE=true` |
+
+Use `starttls` rather than plain LDAP for TCP/389 whenever possible. Both encrypted modes require a trusted CA and certificate validation. Never disable certificate validation or use plaintext LDAP with real production AD passwords. After changing the protocol, recreate the app container and run `php artisan sag:ce-ad-check` (optionally `--user=...`).

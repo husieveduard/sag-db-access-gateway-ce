@@ -35,69 +35,58 @@ class SagCeAdCheck extends Command
         $domain = trim((string) ($ldap['domain'] ?? ''));
         $caFile = trim((string) ($ldap['ca_file'] ?? ''));
 
-        if (parse_url($url, PHP_URL_SCHEME) !== 'ldaps'
-            || parse_url($url, PHP_URL_USER) !== null
-            || parse_url($url, PHP_URL_PASS) !== null
-            || $domain === '' || $baseDn === '' || $groupDn === '') {
-            $this->error('Invalid AD configuration: LDAPS URL, domain, base DN and allowed group DN are required.');
-
+        if ($domain === '' || $baseDn === '' || $groupDn === '') {
+            $this->error('AD domain, base DN and group DN are required.');
             return self::FAILURE;
         }
 
-        $host = parse_url($url, PHP_URL_HOST);
-        $port = parse_url($url, PHP_URL_PORT) ?: 636;
-
-        if (!is_string($host) || $host === '' || !is_int($port)
-            || $port < 1 || $port > 65535) {
-            $this->error('Invalid AD LDAPS hostname or port.');
-
+        try {
+            $transport = \App\Services\Auth\DirectoryTransport::resolve($ldap, (string) config('app.env'));
+        } catch (RuntimeException $exception) {
+            $this->error($exception->getMessage());
             return self::FAILURE;
         }
 
-        if ($caFile !== '' && !is_readable($caFile)) {
-            $this->error('Configured AD CA certificate is not readable inside the container.');
+        if ($transport['encrypted']) {
+            try {
+                \App\Services\Auth\DirectoryTransport::configureTls($caFile);
+            } catch (RuntimeException $exception) {
+                $this->error('LDAP CA/TLS configuration invalid.');
+                return self::FAILURE;
+            }
+        }
 
+        $connection = @ldap_connect($transport['url']);
+        if ($connection === false) {
+            $this->error('AD server connection initialization failed.');
             return self::FAILURE;
         }
 
-        $sslOptions = [
-            'verify_peer' => true,
-            'verify_peer_name' => true,
-            'peer_name' => trim($host, '[]'),
-            'SNI_enabled' => true,
-        ];
-        if ($caFile !== '') {
-            $sslOptions['cafile'] = $caFile;
-        }
+        try {
+            ldap_set_option($connection, LDAP_OPT_PROTOCOL_VERSION, 3);
+            ldap_set_option($connection, LDAP_OPT_REFERRALS, 0);
+            ldap_set_option($connection, LDAP_OPT_NETWORK_TIMEOUT, 5);
 
-        $context = stream_context_create(['ssl' => $sslOptions]);
-
-        $errorCode = 0;
-        $errorMessage = '';
-        // An SSL handshake verifies the DC's certificate and hostname without
-        // transmitting a username, password or binding anonymously to AD.
-        $socket = @stream_socket_client(
-            'tls://'.$host.':'.$port,
-            $errorCode,
-            $errorMessage,
-            5,
-            STREAM_CLIENT_CONNECT,
-            $context
-        );
-
-        if ($socket === false) {
-            $this->error(
-                'LDAPS TLS connection or certificate validation failed. '
-                .'Check the domain controller DNS name, TCP port and trusted CA.'
-            );
-
+            if ($transport['starttls']) {
+                \App\Services\Auth\DirectoryTransport::upgradeStartTls($connection);
+            } elseif ($transport['mode'] === 'ldaps') {
+                // Force a network operation to verify TLS now without credentials.
+                if (@ldap_read($connection, '', '(objectClass=*)', ['dn'], 0, 1, 5) === false) {
+                    throw new RuntimeException('LDAPS handshake / certificate validation failed.');
+                }
+            } else {
+                // Explicit non-production plaintext mode; no credentials sent yet.
+                $this->warn('WARNING: LDAP transport is unencrypted. Lab use only.');
+            }
+        } catch (RuntimeException $exception) {
+            $this->error('AD TLS connection failed; check hostname, CA and protocol.');
             return self::FAILURE;
+        } finally {
+            @ldap_unbind($connection);
         }
 
-        fclose($socket);
-
-        $this->info('LDAPS TLS handshake succeeded; certificate and hostname verified.');
-        $this->line('AD authorization group configured. No credentials were transmitted.');
+        $this->info('AD transport check completed: '.$transport['mode']);
+        $this->line('No credentials were transmitted in the connectivity check.');
 
         $identity = trim((string) $this->option('user'));
         if ($identity === '') {
