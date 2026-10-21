@@ -40,6 +40,7 @@
                     <a href="{{ route('admin.alerts.index') }}">{{ __('alerts.nav') }}</a>
                     @if (auth()->user()->isSuperAdmin())
                         <a href="{{ route('admin.alert-health.index') }}">Alert Health</a>
+                        <a href="{{ route('admin.alert-channels.index') }}">Канали сповіщень</a>
                         <a href="{{ route('admin.alert-rules.index') }}">{{ __('alerts.rules_nav') }}</a>
                     @endif
                     @if (auth()->user()->isSuperAdmin())
