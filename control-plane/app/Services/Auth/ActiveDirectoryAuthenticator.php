@@ -14,7 +14,7 @@ class ActiveDirectoryAuthenticator
      */
     public function authenticate(string $identity, string $password): ?array
     {
-        $settings = config('sag.ldap', []);
+        $settings = app(AdSettings::class)->get();
 
         if (!($settings['enabled'] ?? false) || $password === '') {
             return null;

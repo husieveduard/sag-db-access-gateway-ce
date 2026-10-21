@@ -65,7 +65,7 @@ class LoginController extends Controller
             }
         }
 
-        if (!$user && $reason === 'invalid_credentials' && config('sag.ldap.enabled', false)) {
+        if (!$user && $reason === 'invalid_credentials' && app(\App\Services\Auth\AdSettings::class)->get()['enabled'] ?? false) {
             try {
                 $ad = $directory->authenticate($identity, $credentials['password']);
             } catch (RuntimeException $exception) {
