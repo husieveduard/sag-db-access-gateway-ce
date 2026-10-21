@@ -18,6 +18,7 @@
     <div class="settings-page-header">
         <div>
             <h1 class="page-title">Стан сповіщень</h1>
+            <p><a class="button secondary" href="{{ route('admin.alert-channels.index') }}">Налаштувати канали</a></p>
             <p class="subtitle">Черги подій, доставки та перевірка каналів Alert Engine.</p>
         </div>
     </div>
