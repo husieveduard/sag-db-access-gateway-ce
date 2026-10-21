@@ -175,3 +175,10 @@ jobs:
             --env-file deploy/.env.example \
             -f deploy/compose.yaml \
             build app worker nginx
+
+      - name: Check website assets readable by non-root nginx user
+        run: |
+          docker run --rm --user 101:101 --entrypoint sh \
+            sag-db-access-gateway-ce-nginx -c \
+            'test -r /var/www/html/public/css/sag-ce.css && \
+             head -c 1 /var/www/html/public/css/sag-ce.css >/dev/null'

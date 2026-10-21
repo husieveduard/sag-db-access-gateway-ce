@@ -133,6 +133,11 @@ FROM nginx:1.27-alpine AS nginx
 COPY --from=runtime /var/www/html/public /var/www/html/public
 COPY deploy/nginx/default.conf.template /etc/nginx/templates/default.conf.template
 
-RUN rm -f /etc/nginx/conf.d/default.conf
+# Static files copied from a private-umask checkout can retain mode 0600.
+# They are public website assets, so nginx (UID 101) must be able to read
+# them without weakening permissions on Laravel storage or secrets.
+RUN find /var/www/html/public -type d -exec chmod 0755 {} + \
+    && find /var/www/html/public -type f -exec chmod 0644 {} + \
+    && rm -f /etc/nginx/conf.d/default.conf
 
 EXPOSE 80
