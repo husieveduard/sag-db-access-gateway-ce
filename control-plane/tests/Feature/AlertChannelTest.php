@@ -27,4 +27,30 @@ class AlertChannelTest extends TestCase {
         config()->set('sag.alerts.email_to','security@example.test');
         $this->assertFalse(app(ChannelSender::class)->enabled('email'));
     }
+    public function test_generic_webhook_rejects_unapproved_internal_host(): void {
+        config()->set('sag.alerts.webhook_url','https://localhost/alert');
+        config()->set('sag.alerts.allowed_hosts','localhost');
+        Http::fake();
+        $this->expectException(\\RuntimeException::class);
+        app(ChannelSender::class)->send('webhook',['alert_id'=>2]);
+    }
+    public function test_generic_webhook_payload_has_no_sql_or_secrets(): void {
+        config()->set('sag.alerts.webhook_url','https://alerts.example.com/incoming');
+        config()->set('sag.alerts.allowed_hosts','alerts.example.com');
+        Http::fake(['alerts.example.com/*'=>Http::response(['ok'=>true],200)]);
+        app(ChannelSender::class)->send('webhook',[
+            'alert_id'=>1,'rule'=>'high_risk_query','sql'=>'DROP secret','credential'=>'secret',
+        ]);
+        Http::assertSent(fn($request)=>
+            $request['alert_id']===1 && !isset($request['sql']) && !isset($request['credential'])
+        );
+    }
+    public function test_telegram_requires_ok_response_not_only_http_200(): void {
+        config()->set('sag.alerts.telegram_bot_token','000000000:fake');
+        config()->set('sag.alerts.telegram_chat_id','12345678');
+        Http::fake(['api.telegram.org/*'=>Http::response(['ok'=>false],200)]);
+        $this->expectException(\\RuntimeException::class);
+        app(ChannelSender::class)->send('telegram',['alert_id'=>3]);
+    }
+
 }
