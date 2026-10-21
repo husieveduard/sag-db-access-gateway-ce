@@ -7,6 +7,8 @@ return [
 
     'ldap' => [
         'enabled' => filter_var(env('SAG_CE_LDAP_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+        'protocol' => env('SAG_CE_LDAP_PROTOCOL', 'ldaps'),
+        'allow_insecure' => filter_var(env('SAG_CE_LDAP_ALLOW_INSECURE', false), FILTER_VALIDATE_BOOLEAN),
         'url' => env('SAG_CE_LDAP_URL', ''),
         'domain' => env('SAG_CE_LDAP_DOMAIN', ''),
         'netbios_domain' => env('SAG_CE_LDAP_NETBIOS_DOMAIN', ''),

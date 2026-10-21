@@ -27,25 +27,18 @@ class ActiveDirectoryAuthenticator
         $netbios = trim((string) ($settings['netbios_domain'] ?? ''));
         $caFile = trim((string) ($settings['ca_file'] ?? ''));
 
-        // Do not accept ldap:// or an unverified TLS connection for credentials.
-        if (!extension_loaded('ldap') || parse_url($url, PHP_URL_SCHEME) !== 'ldaps'
-            || $domain === '' || $baseDn === '' || $groupDn === '') {
-            throw new RuntimeException('Active Directory LDAPS is not configured correctly.');
+        if (!extension_loaded('ldap') || $domain === '' || $baseDn === '' || $groupDn === '') {
+            throw new RuntimeException('Active Directory authentication is not configured correctly.');
         }
+        $transport = DirectoryTransport::resolve($settings, (string) config('app.env'));
 
         $login = $this->parseIdentity($identity, $domain, $netbios);
         if ($login === null) {
             return null;
         }
 
-        // TLS options must be applied before ldap_connect (OpenLDAP context).
-        ldap_set_option(null, LDAP_OPT_X_TLS_REQUIRE_CERT, LDAP_OPT_X_TLS_HARD);
-
-        if ($caFile !== '') {
-            if (!is_readable($caFile)) {
-                throw new RuntimeException('Configured Active Directory CA file is unreadable.');
-            }
-            ldap_set_option(null, LDAP_OPT_X_TLS_CACERTFILE, $caFile);
+        if ($transport['encrypted']) {
+            DirectoryTransport::configureTls($caFile);
         }
 
         $ldap = @ldap_connect($url);
@@ -58,6 +51,10 @@ class ActiveDirectoryAuthenticator
             ldap_set_option($ldap, LDAP_OPT_REFERRALS, 0);
             ldap_set_option($ldap, LDAP_OPT_NETWORK_TIMEOUT, 5);
             ldap_set_option($ldap, LDAP_OPT_TIMELIMIT, 5);
+
+            if ($transport['starttls']) {
+                DirectoryTransport::upgradeStartTls($ldap);
+            }
 
             // Bind with the actual user's credentials; there is no service bind secret.
             if (!@ldap_bind($ldap, $login['principal'], $password)) {
