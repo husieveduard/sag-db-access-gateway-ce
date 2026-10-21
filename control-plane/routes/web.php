@@ -73,7 +73,13 @@ Route::middleware(['auth', 'ce.admin', 'ce.mfa'])
         Route::post('/ad-settings', [AdSettingsController::class, 'update'])->middleware('throttle:5,1')->name('ad-settings.update');
         Route::post('/ad-settings/test', [AdSettingsController::class, 'test'])->middleware('throttle:3,1')->name('ad-settings.test');
         Route::get('/administrators', [AdministratorController::class, 'index'])->name('administrators.index');
-        Route::post('/administrators/{user}/role', [AdministratorController::class, 'updateRole'])->name('administrators.role');
+        Route::get('/administrators/create', [AdministratorController::class, 'create'])->name('administrators.create');
+        Route::post('/administrators', [AdministratorController::class, 'store'])
+            ->middleware('throttle:5,1')->name('administrators.store');
+        Route::post('/administrators/{user}/role', [AdministratorController::class, 'updateRole'])
+            ->middleware('throttle:10,1')->name('administrators.role');
+        Route::post('/administrators/{user}/status', [AdministratorController::class, 'updateStatus'])
+            ->middleware('throttle:10,1')->name('administrators.status');
         Route::get('/audit', AuditController::class)->name('audit.index');
         Route::get('/alert-health', [AlertHealthController::class, 'index'])->name('alert-health.index');
         Route::post('/alert-health/test', [AlertHealthController::class, 'test'])->middleware('throttle:3,1')->name('alert-health.test');

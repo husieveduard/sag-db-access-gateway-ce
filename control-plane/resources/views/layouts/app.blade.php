@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>@yield('title', __('ce.app_title'))</title>
-    <link rel="stylesheet" href="{{ asset('css/sag-ce.css') }}">
+    <link rel="stylesheet" href="{{ asset('css/sag-ce.css') }}?v=20261021-admin-layout-1">
 </head>
 <body>
     @php

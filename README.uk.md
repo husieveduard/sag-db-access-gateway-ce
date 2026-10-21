@@ -10,6 +10,7 @@ SAG DB Access Gateway CE — це легкий control plane для тимчас
 ## Документація
 
 - [Інструкція з розгортання](docs/DEPLOYMENT.md)
+- [Керування адміністраторами](docs/ADMINISTRATION.md)
 - [Шаблон host Nginx reverse proxy](deploy/reverse-proxy/nginx-host.conf.example)
 
 

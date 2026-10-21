@@ -7,6 +7,8 @@ use RuntimeException;
 
 class ChannelSender
 {
+    public const CHANNELS = ['telegram', 'slack', 'teams', 'nextcloud_talk', 'webhook', 'email'];
+
     public function enabled(string $channel): bool
     {
         return match ($channel) {
