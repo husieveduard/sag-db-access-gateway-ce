@@ -48,13 +48,13 @@ class ChannelSender
                 return;
             }
             if ($channel === 'telegram') {
-                $url = 'https://api.telegram.org/bot'.config('sag.alerts.telegram_bot_token').'/sendMessage';
-                $payload = ['chat_id' => config('sag.alerts.telegram_chat_id'), 'text' => $message];
+                $url = 'https://api.telegram.org/bot'.$settings['bot_token'].'/sendMessage';
+                $payload = ['chat_id' => $settings['chat_id'], 'text' => $message];
             } elseif ($channel === 'nextcloud_talk') {
-                $url = rtrim(config('sag.alerts.nextcloud_url'), '/').'/ocs/v2.php/apps/spreed/api/v1/chat/'.rawurlencode(config('sag.alerts.nextcloud_room_token'));
+                $url = rtrim($settings['nextcloud_url'], '/').'/ocs/v2.php/apps/spreed/api/v1/chat/'.rawurlencode($settings['room_token']);
                 app(OutboundEndpointPolicy::class)->assertAllowed('nextcloud_talk', $url, $settings['allowed_hosts'] ?? '');
                 $response = Http::connectTimeout(3)->timeout(8)->withOptions(['allow_redirects' => false])
-                    ->withBasicAuth(config('sag.alerts.nextcloud_user'), config('sag.alerts.nextcloud_app_password'))
+                    ->withBasicAuth($settings['user'], $settings['app_password'])
                     ->withHeaders(['OCS-APIRequest' => 'true'])->asForm()->post($url, ['message' => $message]);
                 if (!$response->successful() || !in_array((int) $response->json('ocs.meta.statuscode'), [100,200,201], true)) {
                     throw new RuntimeException('delivery_rejected');
@@ -62,9 +62,9 @@ class ChannelSender
                 return;
             } else {
                 $url = match ($channel) {
-                    'slack' => config('sag.alerts.slack_webhook_url'),
-                    'teams' => config('sag.alerts.teams_webhook_url'),
-                    'webhook' => config('sag.alerts.webhook_url'),
+                    'slack' => $settings['webhook_url'],
+                    'teams' => $settings['webhook_url'],
+                    'webhook' => $settings['webhook_url'],
                 };
                 $payload = $channel === 'webhook'
                     ? array_intersect_key($event, array_flip(['alert_id','rule','severity','resource_id','session_id','occurrences','first_seen_at']))
