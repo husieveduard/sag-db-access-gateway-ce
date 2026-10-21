@@ -7,6 +7,7 @@ use App\Http\Controllers\Admin\SessionController;
 use App\Http\Controllers\Admin\AdministratorController;
 use App\Http\Controllers\Admin\AuditController;
 use App\Http\Controllers\Admin\AlertController;
+use App\Http\Controllers\Admin\AlertHealthController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\MfaController;
 use Illuminate\Http\Request;
@@ -70,6 +71,8 @@ Route::middleware(['auth', 'ce.admin', 'ce.mfa'])
         Route::get('/administrators', [AdministratorController::class, 'index'])->name('administrators.index');
         Route::post('/administrators/{user}/role', [AdministratorController::class, 'updateRole'])->name('administrators.role');
         Route::get('/audit', AuditController::class)->name('audit.index');
+        Route::get('/alert-health', [AlertHealthController::class, 'index'])->name('alert-health.index');
+        Route::post('/alert-health/test', [AlertHealthController::class, 'test'])->middleware('throttle:3,1')->name('alert-health.test');
         Route::get('/alerts', [AlertController::class, 'index'])->name('alerts.index');
         Route::post('/alerts/{alert}/status', [AlertController::class, 'updateStatus'])->name('alerts.status');
         Route::get('/alert-rules', [AlertController::class, 'rules'])->name('alert-rules.index');

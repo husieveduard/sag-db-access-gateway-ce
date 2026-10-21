@@ -62,7 +62,7 @@ class AlertEngine
                 'summary' => $rule->title,
                 'first_seen_at' => $seen, 'last_seen_at' => $seen,
             ]);
-            foreach (['webhook', 'email'] as $channel) {
+            foreach (['telegram', 'slack', 'teams', 'nextcloud_talk', 'webhook', 'email'] as $channel) {
                 if ($this->channelEnabled($channel)) {
                     $alert->deliveries()->create(['channel' => $channel, 'next_attempt_at' => now()]);
                 }
@@ -78,8 +78,6 @@ class AlertEngine
 
     private function channelEnabled(string $channel): bool
     {
-        return $channel === 'webhook'
-            ? filled(config('sag.alerts.webhook_url'))
-            : filled(config('sag.alerts.email_to'));
+        return app(ChannelSender::class)->enabled($channel);
     }
 }
