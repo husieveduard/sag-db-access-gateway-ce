@@ -8,6 +8,7 @@ use App\Http\Controllers\Admin\AdministratorController;
 use App\Http\Controllers\Admin\AuditController;
 use App\Http\Controllers\Admin\AlertController;
 use App\Http\Controllers\Admin\AlertHealthController;
+use App\Http\Controllers\Admin\AlertChannelSettingsController;
 use App\Http\Controllers\Admin\AdSettingsController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\MfaController;
@@ -81,6 +82,9 @@ Route::middleware(['auth', 'ce.admin', 'ce.mfa'])
         Route::post('/administrators/{user}/status', [AdministratorController::class, 'updateStatus'])
             ->middleware('throttle:10,1')->name('administrators.status');
         Route::get('/audit', AuditController::class)->name('audit.index');
+        Route::get('/alert-channels', [AlertChannelSettingsController::class, 'index'])->name('alert-channels.index');
+        Route::post('/alert-channels/{channel}', [AlertChannelSettingsController::class, 'update'])
+            ->middleware('throttle:5,1')->name('alert-channels.update');
         Route::get('/alert-health', [AlertHealthController::class, 'index'])->name('alert-health.index');
         Route::post('/alert-health/test', [AlertHealthController::class, 'test'])->middleware('throttle:3,1')->name('alert-health.test');
         Route::get('/alerts', [AlertController::class, 'index'])->name('alerts.index');
