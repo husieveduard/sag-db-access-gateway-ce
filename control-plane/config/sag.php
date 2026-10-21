@@ -17,6 +17,7 @@ return [
 
     'alerts' => [
         'webhook_url' => env('SAG_CE_ALERT_WEBHOOK_URL', ''),
+        'allowed_hosts' => env('SAG_CE_ALERT_ALLOWED_HOSTS', ''),
         'telegram_bot_token' => env('SAG_CE_ALERT_TELEGRAM_BOT_TOKEN', ''),
         'telegram_chat_id' => env('SAG_CE_ALERT_TELEGRAM_CHAT_ID', ''),
         'slack_webhook_url' => env('SAG_CE_ALERT_SLACK_WEBHOOK_URL', ''),

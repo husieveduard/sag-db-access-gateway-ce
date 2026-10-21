@@ -43,7 +43,8 @@ class AlertDeliveryService
                     'next_attempt_at' => now()->addSeconds(min(3600, 30 * (2 ** min($attempt, 6)))),
                     'last_error_code' => 'delivery_failed',
                 ])->save();
-                report($e);
+                // Third-party exception bodies/URLs can contain credentials.
+                // Report only safe status codes through the delivery row.
             }
         }
 
