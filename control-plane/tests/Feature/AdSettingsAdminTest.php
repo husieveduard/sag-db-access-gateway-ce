@@ -17,8 +17,15 @@ class AdSettingsAdminTest extends TestCase
         $super = User::factory()->create();
         $super->forceFill(['role' => 'superadmin', 'is_active' => true])->save();
 
-        $this->withoutMiddleware()->actingAs($super)
-            ->get('/admin/ad-settings')
+        $super->forceFill([
+            'mfa_enabled_at' => now()->subMinute(),
+            'mfa_totp_secret' => 'TESTSECRET123456',
+        ])->save();
+
+        $this->actingAs($super)->withSession([
+            'ce_mfa.verified_user_id' => $super->id,
+            'ce_mfa.verified_at' => now()->timestamp,
+        ])->get('/admin/ad-settings')
             ->assertOk()
             ->assertSee('Параметри підключення')
             ->assertSee('settings-form-grid')

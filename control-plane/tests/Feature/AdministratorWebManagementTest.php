@@ -183,8 +183,13 @@ class AdministratorWebManagementTest extends TestCase
             ->assertSee('alert-health-stats')
             ->assertSee('Необроблені події аудиту')
             ->assertSee('Канали сповіщень');
-        foreach (ChannelSender::CHANNELS as $channel) {
-            $page->assertSee($channel);
+        foreach ([
+            'Telegram', 'Slack', 'Microsoft Teams', 'Nextcloud Talk', 'Webhook', 'Email',
+        ] as $label) {
+            $page->assertSee($label);
         }
+        // The displayed names are localized, while channel IDs remain
+        // internal and are submitted only when a channel is configured.
+        $this->assertCount(6, ChannelSender::CHANNELS);
     }
 }
