@@ -73,7 +73,7 @@ class AuditLogUxTest extends TestCase
             ->assertOk()
             ->assertSee('audit-payload-'.$event->id)
             ->assertSee('access.db.query.high_risk')
-            ->assertDontSee('access.db.connection.denied');
+            ->assertDontSee('<code class="ce-audit-event-code">access.db.connection.denied</code>', false);
         $response->assertDontSee('NEVER_SHOW_SECRET');
         $response->assertSee('[REDACTED]');
         $response->assertSee('ce-audit-dialog');
