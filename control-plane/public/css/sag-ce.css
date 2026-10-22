@@ -1749,3 +1749,85 @@ textarea {
     .session-detail .risk-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .session-detail .risk-summary-card { padding: 14px; min-height: 92px; }
 }
+
+
+/* ===== Modern CE navigation: workspace sidebar, mobile disclosure ===== */
+.ce-app-shell { min-height: 100vh; display: grid; grid-template-columns: 246px minmax(0,1fr); }
+.ce-sidebar {
+    position: sticky; top: 0; height: 100vh; overflow-y: auto;
+    background: #101d33; color: #d7e4fa; padding: 22px 12px;
+    border-right: 1px solid #263650;
+}
+.ce-sidebar-brand {
+    display: flex; gap: 11px; align-items: center; min-height: 56px;
+    padding: 5px 11px 24px; font-size: 13px; font-weight: 800; line-height: 1.45;
+    color: #fff; text-decoration: none;
+}
+.ce-sidebar-brand small { display: inline-block; color: #93c5fd; margin-left: 4px; }
+.ce-brand-icon {
+    display: inline-flex; align-items: center; justify-content: center;
+    flex: 0 0 36px; height: 36px; border-radius: 10px;
+    color: #fff; background: #2563eb; font-size: 20px; font-weight: 800;
+}
+.ce-side-nav { display: flex; flex-direction: column; gap: 3px; }
+.ce-nav-group-label {
+    margin: 22px 10px 8px; color: #90a3c0;
+    text-transform: uppercase; letter-spacing: .08em; font-size: 10px; font-weight: 800;
+}
+.ce-side-link {
+    display: flex; align-items: center; gap: 11px; padding: 11px 12px;
+    border: 1px solid transparent; border-radius: 9px;
+    color: #c8d6ea; font-size: 13px; line-height: 1.4; font-weight: 650;
+    transition: background .15s, color .15s;
+}
+.ce-nav-symbol { display: inline-flex; width: 19px; justify-content: center; font-size: 17px; opacity: .9; }
+.ce-side-link:hover { background: #1d3250; color: white; }
+.ce-side-link.is-current, .ce-side-link[aria-current="page"] {
+    color: #fff; background: #1f4374; border-color: #355c90; font-weight: 750;
+}
+.ce-workspace { min-width: 0; }
+.ce-workspace-header {
+    display: flex; align-items: center; justify-content: space-between; gap: 15px;
+    min-height: 70px; background: rgba(255,255,255,.96);
+    border-bottom: 1px solid var(--line); padding: 12px 26px;
+    position: sticky; top: 0; z-index: 19;
+}
+.ce-workspace-context { font-size: 13px; font-weight: 700; color: var(--muted); }
+.ce-account-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 12px; color: var(--muted); font-size: 12px; }
+.ce-account-actions form { margin: 0; }
+.ce-account-actions .logout { font-size: 12px; font-weight: 700; }
+.ce-workspace .container { max-width: 1480px; padding: 28px 30px; }
+.ce-mobile-menu { display: none; position: relative; }
+.ce-mobile-menu summary {
+    display: flex; align-items: center; gap: 12px; cursor: pointer;
+    list-style: none; border: 1px solid var(--line); border-radius: 9px;
+    padding: 9px 12px; font-weight: 750; font-size: 13px; background: #fff;
+}
+.ce-mobile-menu summary::-webkit-details-marker { display: none; }
+.ce-mobile-menu nav {
+    position: absolute; top: calc(100% + 8px); left: 0; width: min(310px, calc(100vw - 24px));
+    max-height: 70vh; overflow-y: auto; padding: 9px;
+    border: 1px solid var(--line); border-radius: 12px; background: #fff;
+    box-shadow: 0 15px 35px rgba(16,24,40,.16); z-index: 30;
+}
+.ce-mobile-menu nav a { display: block; padding: 12px; border-radius: 7px; font-size: 13px; }
+.ce-mobile-menu nav a:hover { background: var(--blue-soft); color: #1d4ed8; }
+@media (max-width: 1200px) {
+    .ce-app-shell { grid-template-columns: 214px minmax(0,1fr); }
+    .ce-workspace-header { padding: 10px 18px; }
+    .ce-workspace .container { padding: 22px 20px; }
+}
+@media (max-width: 920px) {
+    .ce-app-shell { display: block; }
+    .ce-sidebar { display: none; }
+    .ce-mobile-menu { display: block; }
+    .ce-workspace-header { position: sticky; }
+    .ce-workspace-context { display: none; }
+}
+@media (max-width: 580px) {
+    .ce-workspace-header { align-items: flex-start; gap: 9px; padding: 11px 12px; }
+    .ce-account-actions { gap: 6px; }
+    .ce-account-name { display: none; }
+    .ce-workspace .container { padding: 16px 12px; }
+    .ce-account-actions .logout { padding: 7px; }
+}

@@ -5,12 +5,16 @@ return [
     'product_name' => 'SAG DB Access Gateway',
     'edition' => 'CE',
 
+    'navigation' => 'Меню',
+    'groups' => ['workspace' => 'Основне', 'monitoring' => 'Моніторинг', 'administration' => 'Адміністрування'],
     'nav' => [
         'dashboard' => 'Панель керування',
         'resources' => 'Ресурси БД',
         'sessions' => 'Сесії',
         'administrators' => 'Адміністратори',
         'audit' => 'Журнал дій',
+        'alert_health' => 'Стан сповіщень',
+        'alert_channels' => 'Канали сповіщень',
     ],
 
     'role' => [

@@ -5,12 +5,16 @@ return [
     'product_name' => 'SAG DB Access Gateway',
     'edition' => 'CE',
 
+    'navigation' => 'Menu',
+    'groups' => ['workspace' => 'Workspace', 'monitoring' => 'Monitoring', 'administration' => 'Administration'],
     'nav' => [
         'dashboard' => 'Dashboard',
         'resources' => 'Database resources',
         'sessions' => 'Sessions',
         'administrators' => 'Administrators',
         'audit' => 'Audit log',
+        'alert_health' => 'Alert health',
+        'alert_channels' => 'Notification channels',
     ],
 
     'role' => [
