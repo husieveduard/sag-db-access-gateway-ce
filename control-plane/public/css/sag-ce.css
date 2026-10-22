@@ -2018,3 +2018,33 @@ textarea {
 .ce-alert-action select { min-width: 145px; width: auto; flex: 1; max-width: 210px; margin: 0; }
 .ce-alert-action .button { white-space: nowrap; min-height: 38px; }
 @media (max-width: 700px) { .ce-alert-filters > div { flex: 1 1 100%; } .ce-alert-table td { padding: 12px; } }
+
+/* CE Audit Log UX */
+.ce-audit-filters { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; background:#fff; border:1px solid var(--line); border-radius:12px; padding:18px; margin:18px 0 12px; }
+.ce-audit-field { min-width:0; }
+.ce-audit-field label { display:block; font-size:12px; font-weight:750; margin:0 0 7px; }
+.ce-audit-field input,.ce-audit-field select { width:100%; min-width:0; margin:0; }
+.ce-audit-search { grid-column:span 2; }
+.ce-audit-filter-actions { display:flex; flex-wrap:wrap; align-items:end; gap:9px; }
+.ce-audit-filter-actions .button { min-height:40px; }
+.ce-audit-zone { font-size:12px; color:var(--muted); margin:10px 0 14px; }
+.ce-audit-table table { min-width:1040px; }
+.ce-audit-table td { vertical-align:middle; font-size:13px; padding:13px; }
+.ce-audit-time { white-space:nowrap; }
+.ce-audit-event-code,.ce-audit-ip,.ce-audit-id { font-size:12px; overflow-wrap:anywhere; }
+.ce-audit-actor { overflow-wrap:anywhere; max-width:210px; }
+.ce-audit-open { white-space:nowrap; }
+.ce-audit-empty { text-align:center; padding:30px; }
+.ce-audit-pagination { margin:16px 0; }
+.ce-audit-dialog { width:min(790px,calc(100vw - 26px)); max-height:85vh; border:1px solid var(--line); border-radius:14px; box-shadow:0 22px 70px rgba(16,24,40,.2); padding:0; color:var(--text); }
+.ce-audit-dialog::backdrop { background:rgba(13,27,45,.52); }
+.ce-audit-dialog-top { display:flex; justify-content:space-between; align-items:start; padding:19px 22px; border-bottom:1px solid var(--line); }
+.ce-audit-dialog-top h2 { font-size:18px; margin:0 0 7px; overflow-wrap:anywhere; }
+.ce-audit-dialog-top p { margin:0; font-size:12px; }
+.ce-audit-close { border:1px solid var(--line); border-radius:7px; background:#fff; padding:8px 12px; cursor:pointer; }
+.ce-audit-dialog-body { padding:18px 22px; }
+.ce-audit-json-header { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:10px; }
+.ce-audit-dialog pre { background:#101d33; color:#dce9fa; padding:18px; border-radius:10px; max-height:49vh; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; font-size:12px; line-height:1.6; }
+.ce-audit-redaction-note { color:var(--muted); font-size:12px; margin:12px 0 0; }
+@media(max-width:1050px) { .ce-audit-filters { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:600px) { .ce-audit-filters { grid-template-columns:1fr; padding:13px; } .ce-audit-search { grid-column:span 1; } }

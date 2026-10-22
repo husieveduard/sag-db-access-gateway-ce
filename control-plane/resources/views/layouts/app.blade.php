@@ -6,7 +6,7 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta name="ce-display-timezone" content="{{ app(\App\Services\Settings\DisplayClock::class)->timezone() }}">
     <title>@yield('title', __('ce.app_title'))</title>
-    <link rel="stylesheet" href="{{ asset('css/sag-ce.css') }}?v=20261022-timezone-alerts-1">
+    <link rel="stylesheet" href="{{ asset('css/sag-ce.css') }}?v=20261022-audit-ux-1">
     <script src="{{ asset('js/ce-ui.js') }}?v=20261022-timezone-alerts-1" defer></script>
 </head>
 <body>
