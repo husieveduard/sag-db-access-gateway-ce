@@ -123,6 +123,6 @@ class ChannelSender
     private function safeLabel(mixed $value): string
     {
         $clean = preg_replace('/[\\x00-\\x1F\\x7F]+/u', ' ', (string) $value);
-        return \\Illuminate\\Support\\Str::limit(trim($clean ?? ''), 120);
+        return \Illuminate\Support\Str::limit(trim($clean ?? ''), 120);
     }
 }
