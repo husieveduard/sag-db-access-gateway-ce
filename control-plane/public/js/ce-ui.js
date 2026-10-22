@@ -47,6 +47,13 @@
         const all = document.getElementById('ce-notification-read-all');
         const labels = document.getElementById('ce-notification-labels').dataset;
         const csrf = document.querySelector('meta[name="csrf-token"]').content;
+        const displayZone = document.querySelector('meta[name="ce-display-timezone"]')?.content || 'UTC';
+        const language = document.documentElement.lang === 'uk' ? 'uk-UA' : 'en-GB';
+        const timestampFormat = new Intl.DateTimeFormat(language, {
+            timeZone: displayZone, day: '2-digit', month: '2-digit',
+            year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit',
+            hourCycle: 'h23'
+        });
         let pending = false;
 
         const createNode = (tag, cls, text) => {
@@ -83,7 +90,7 @@
                 if (item.unread) head.append(createNode('span', 'ce-unread-dot'));
                 head.append(createNode('strong', '', item.title));
                 section.append(head, createNode('p', '', item.detail));
-                const when = createNode('time', '', new Date(item.occurred_at).toLocaleString());
+                const when = createNode('time', '', timestampFormat.format(new Date(item.occurred_at)));
                 section.append(when);
                 const actions = createNode('div', 'ce-notification-item-actions');
                 const link = createNode('a', '', labels.open);

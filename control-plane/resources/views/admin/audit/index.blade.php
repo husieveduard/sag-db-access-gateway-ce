@@ -10,7 +10,7 @@
 <tbody>
 @forelse($events as $event)
 <tr>
-<td>{{ $event->occurred_at }}</td>
+<td>{{ app(\App\Services\Settings\DisplayClock::class)->format($event->occurred_at) }}</td>
 <td>{{ $event->actor?->email ?? 'Система' }}</td>
 <td>{{ $event->event_type }}</td>
 <td>{{ $event->category }}</td>

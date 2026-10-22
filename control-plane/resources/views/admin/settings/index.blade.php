@@ -10,6 +10,24 @@
     </header>
 
     <section class="ce-settings-section">
+        <h2>{{ __('ce.timezone.title') }}</h2>
+        <div class="card ce-timezone-config">
+            <p>{{ __('ce.timezone.description') }}</p>
+            <form method="POST" action="{{ route('admin.settings.timezone') }}">
+                @csrf
+                <label for="ce-display-timezone">{{ __('ce.timezone.label') }}</label>
+                <select name="timezone" id="ce-display-timezone" required>
+                    @foreach($timezones as $zone)
+                        <option value="{{ $zone }}" @selected(old('timezone', $displayTimezone) === $zone)>{{ $zone }}</option>
+                    @endforeach
+                </select>
+                <button class="button primary" type="submit">{{ __('ce.timezone.save') }}</button>
+            </form>
+            <p class="muted">{{ __('ce.timezone.current') }}: <strong>{{ $displayTimezone }}</strong> · {{ __('ce.timezone.utc_note') }}</p>
+        </div>
+    </section>
+
+    <section class="ce-settings-section">
         <h2>{{ __('ce.settings.access') }}</h2>
         <div class="ce-settings-cards">
             <a class="ce-settings-card" href="{{ route('admin.administrators.index') }}">
