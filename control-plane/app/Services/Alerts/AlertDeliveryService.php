@@ -15,7 +15,7 @@ class AlertDeliveryService
             ->where('updated_at', '<', now()->subMinutes(5))
             ->update(['status' => 'retry', 'next_attempt_at' => now()]);
 
-        $items = AlertDelivery::query()->with('alert.rule')
+        $items = AlertDelivery::query()->with(['alert.rule', 'alert.resource'])
             ->whereIn('status', ['queued', 'retry'])
             ->where('next_attempt_at', '<=', now())
             ->orderBy('id')->limit($limit)->get();
@@ -57,8 +57,10 @@ class AlertDeliveryService
         app(ChannelSender::class)->send($delivery->channel, [
             'alert_id' => $alert->id,
             'rule' => $alert->rule->code,
+            'rule_title' => $alert->rule->title,
             'severity' => $alert->severity,
             'resource_id' => $alert->resource_id,
+            'resource_name' => $alert->resource?->name,
             'session_id' => $alert->session_id,
             'occurrences' => $alert->occurrence_count,
             'first_seen_at' => $alert->first_seen_at?->toIso8601String(),

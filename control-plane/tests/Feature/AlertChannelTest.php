@@ -53,4 +53,33 @@ class AlertChannelTest extends TestCase {
         app(ChannelSender::class)->send('telegram',['alert_id'=>3]);
     }
 
+
+    public function test_telegram_notification_shows_resource_name_and_identifier_without_sql(): void
+    {
+        config()->set('sag.alerts.telegram_bot_token', '123456:fake');
+        config()->set('sag.alerts.telegram_chat_id', '12345678');
+        Http::fake(['api.telegram.org/*' => Http::response(['ok' => true], 200)]);
+
+        app(ChannelSender::class)->send('telegram', [
+            'alert_id' => 5,
+            'rule' => 'high_risk_query',
+            'rule_title' => 'Небезпечний SQL-запит',
+            'severity' => 'high',
+            'resource_id' => 1,
+            'resource_name' => "SAG CE PostgreSQL LAB\nFORGED",
+            'occurrences' => 4,
+            'sql' => 'PASSWORD secret',
+        ]);
+
+        Http::assertSent(function ($request) {
+            $text = $request['text'];
+            return str_contains($text, 'SAG CE PostgreSQL LAB FORGED (#1)')
+                && str_contains($text, 'high_risk_query')
+                && str_contains($text, 'Алерт: #5')
+                && str_contains($text, 'Повторень: 4')
+                && !str_contains($text, 'PASSWORD secret')
+                && !str_contains($text, "LAB\\nFORGED");
+        });
+    }
+
 }
