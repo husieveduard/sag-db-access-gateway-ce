@@ -7,7 +7,6 @@ use App\Services\Notifications\SuperadminNotificationFeed;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class NotificationController extends Controller
@@ -27,11 +26,19 @@ class NotificationController extends Controller
     public function read(Request $request, SuperadminNotificationFeed $feed): JsonResponse|RedirectResponse
     {
         abort_unless($request->user()->isSuperAdmin(), 403);
-        $data = $request->validate([
-            'source_type' => ['required', Rule::in(['alert', 'delivery', 'audit'])],
-            'source_id' => ['required', 'integer', 'min:1'],
-        ]);
-        abort_unless($feed->markRead($request->user(), $data['source_type'], (int) $data['source_id']), 404);
+        // Reject malformed source references before resolving or writing read state.
+        // No arbitrary key, JSON payload or path can be selected by the client.
+        $type = $request->input('source_type');
+        $id = $request->input('source_id');
+        abort_unless(
+            is_string($type) && in_array($type, ['alert', 'delivery', 'audit'], true)
+                && (is_int($id) || is_string($id))
+                && ctype_digit((string) $id)
+                && (int) $id > 0
+                && (int) $id <= PHP_INT_MAX,
+            422
+        );
+        abort_unless($feed->markRead($request->user(), $type, (int) $id), 404);
 
         return $request->expectsJson()
             ? response()->json($feed->feed($request->user()))
