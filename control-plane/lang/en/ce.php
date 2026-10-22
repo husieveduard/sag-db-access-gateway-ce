@@ -12,6 +12,15 @@ return [
         'copied' => 'Copied',
         'copy_failed' => 'Copy failed',
     ],
+    'timezone' => [
+        'title' => 'Interface time zone',
+        'description' => 'Used to display timestamps across the administration console.',
+        'label' => 'Time zone',
+        'save' => 'Save time zone',
+        'saved' => 'Time zone updated.',
+        'current' => 'Current',
+        'utc_note' => 'Database timestamps and audit records remain in UTC.',
+    ],
     'navigation' => 'Menu',
     'groups' => ['workspace' => 'Workspace', 'monitoring' => 'Monitoring', 'administration' => 'Administration'],
     'nav' => [

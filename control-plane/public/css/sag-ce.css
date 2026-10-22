@@ -1994,3 +1994,27 @@ textarea {
     .ce-notification-history-actions { flex-wrap: wrap; }
     .ce-notification-panel { right: -100px; }
 }
+
+/* Alerts workbench and display time-zone settings */
+.ce-timezone-config { padding: 20px; }
+.ce-timezone-config p { color: #667085; font-size: 13px; }
+.ce-timezone-config form { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin: 18px 0 12px; }
+.ce-timezone-config label { font-weight: 700; font-size: 13px; width: 100%; }
+.ce-timezone-config select { max-width: 420px; flex: 1 1 240px; }
+.ce-alerts-page { width: 100%; }
+.ce-alert-count { display: inline-block; align-self: center; color: #475467; font-size: 13px; padding: 8px 14px; border: 1px solid #dce3ed; border-radius: 9px; background: #fff; }
+.ce-alert-filters { display: flex; align-items: end; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+.ce-alert-filters > div { flex: 0 1 260px; min-width: 180px; }
+.ce-alert-filters label { display: block; font-weight: 700; font-size: 12px; margin-bottom: 7px; }
+.ce-alert-filters select { width: 100%; margin: 0; }
+.ce-alert-filters .button { min-height: 39px; }
+.ce-alert-table table { min-width: 980px; }
+.ce-alert-table th { padding: 13px 14px; font-size: 12px; white-space: nowrap; }
+.ce-alert-table td { padding: 16px 14px; vertical-align: middle; font-size: 13px; line-height: 1.5; }
+.ce-alert-identifier { font-family: ui-monospace,Consolas,monospace; font-weight: 700; color: #344054; }
+.ce-alert-email { overflow-wrap: anywhere; }
+.ce-alert-subtime { display: block; margin-top: 5px; color: #667085; font-size: 11px; white-space: nowrap; }
+.ce-alert-action { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 0; }
+.ce-alert-action select { min-width: 145px; width: auto; flex: 1; max-width: 210px; margin: 0; }
+.ce-alert-action .button { white-space: nowrap; min-height: 38px; }
+@media (max-width: 700px) { .ce-alert-filters > div { flex: 1 1 100%; } .ce-alert-table td { padding: 12px; } }

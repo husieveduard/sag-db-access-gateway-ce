@@ -170,9 +170,9 @@
 
                     <td>
                         @if ($session->mode === 'temporary')
-                            {{ $session->expires_at?->format('d.m.Y H:i:s') ?? '—' }}
+                            {{ app(\App\Services\Settings\DisplayClock::class)->format($session->expires_at) ?? '—' }}
                         @else
-                            {{ $session->ended_at?->format('d.m.Y H:i:s')
+                            {{ app(\App\Services\Settings\DisplayClock::class)->format($session->ended_at)
                                 ?? __('sessions.lifecycle.manual') }}
                         @endif
                     </td>

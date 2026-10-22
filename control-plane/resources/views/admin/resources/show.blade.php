@@ -284,7 +284,7 @@
 
                         <td>{{ $session->allowed_source_cidr ?? $notAvailable }}</td>
                         <td>{{ $session->open_connections_count }}</td>
-                        <td>{{ $session->created_at?->format('d.m.Y H:i:s') ?? $notAvailable }}</td>
+                        <td>{{ app(\App\Services\Settings\DisplayClock::class)->format($session->created_at) ?? $notAvailable }}</td>
                     </tr>
                 @empty
                     <tr>
@@ -317,7 +317,7 @@
             <tbody>
                 @forelse ($auditEvents as $event)
                     <tr>
-                        <td>{{ $event->occurred_at?->format('d.m.Y H:i:s') ?? $notAvailable }}</td>
+                        <td>{{ app(\App\Services\Settings\DisplayClock::class)->format($event->occurred_at) ?? $notAvailable }}</td>
                         <td><code>{{ $event->event_type }}</code></td>
 
                         <td>
