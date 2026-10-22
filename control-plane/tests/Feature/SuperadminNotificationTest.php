@@ -102,7 +102,7 @@ class SuperadminNotificationTest extends TestCase
         ])->assertNotFound();
         $this->postJson('/admin/notifications/read', [
             'source_type' => 'invalid', 'source_id' => 1,
-        ])->assertUnprocessable();
+        ])->assertStatus(422);
         $this->assertDatabaseCount('admin_notification_reads', 0);
     }
 
