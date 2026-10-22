@@ -88,27 +88,30 @@
     ];
 @endphp
 
-<a class="back-link" href="{{ route('admin.sessions.index') }}">
-    {{ __('session_show.back') }}
-</a>
+<div class="session-detail">
+<header class="session-detail-header">
+    <a class="back-link" href="{{ route('admin.sessions.index') }}">
+        {{ __('session_show.back') }}
+    </a>
 
-<h1 class="page-title">
-    <code title="{{ $session->public_id }}">{{ $session->public_id }}</code>
-</h1>
+    <h1 class="page-title">
+        <code title="{{ $session->public_id }}">{{ $session->public_id }}</code>
+    </h1>
 
-<p class="subtitle">
-    <span class="badge">
-        {{ $modeLabels[$session->mode] ?? $session->mode }}
-    </span>
+    <div class="session-detail-status">
+        <span class="badge">
+            {{ $modeLabels[$session->mode] ?? $session->mode }}
+        </span>
 
-    <span class="badge {{ $statusClass }}">
-        {{ $sessionStatusLabels[$session->status] ?? $session->status }}
-    </span>
+        <span class="badge {{ $statusClass }}">
+            {{ $sessionStatusLabels[$session->status] ?? $session->status }}
+        </span>
 
-    @if ($hasPendingOperation)
-        <span class="badge yellow">{{ __('session_show.pending_operation') }}</span>
-    @endif
-</p>
+        @if ($hasPendingOperation)
+            <span class="badge yellow">{{ __('session_show.pending_operation') }}</span>
+        @endif
+    </div>
+</header>
 
 <section class="summary">
     <div class="card summary-card">
@@ -182,11 +185,12 @@
     </div>
 </section>
 
-<section class="card actions">
+<section class="card actions session-detail-actions">
     @if ($canStart)
         <form
             method="POST"
             action="{{ route('admin.sessions.start', $session) }}"
+            class="session-action-start"
             onsubmit="return confirm('{{ __('session_show.actions.confirm_start') }}');"
         >
             @csrf
@@ -201,7 +205,7 @@
 
     @if ($canTerminate)
         <form
-            class="action-block"
+            class="action-block session-action-terminate"
             method="POST"
             action="{{ route('admin.sessions.terminate', $session) }}"
             onsubmit="return confirm('{{ __('session_show.actions.confirm_terminate') }}');"
@@ -214,6 +218,7 @@
 
             <input
                 name="reason"
+                aria-label="{{ __('session_show.actions.reason_placeholder') }}"
                 type="text"
                 minlength="3"
                 maxlength="255"
@@ -528,4 +533,5 @@
         </table>
     </div>
 </section>
+</div>
 @endsection
