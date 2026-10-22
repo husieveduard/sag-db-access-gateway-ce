@@ -5,6 +5,13 @@ return [
     'product_name' => 'SAG DB Access Gateway',
     'edition' => 'CE',
 
+    'sidebar' => [
+        'collapse' => 'Collapse sidebar',
+        'expand' => 'Expand sidebar',
+        'copy_id' => 'Copy ID',
+        'copied' => 'Copied',
+        'copy_failed' => 'Copy failed',
+    ],
     'navigation' => 'Menu',
     'groups' => ['workspace' => 'Workspace', 'monitoring' => 'Monitoring', 'administration' => 'Administration'],
     'nav' => [

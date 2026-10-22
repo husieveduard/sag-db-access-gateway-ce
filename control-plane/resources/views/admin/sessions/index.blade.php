@@ -70,7 +70,8 @@
                     $statusClass = match ($session->status) {
                         'started' => 'green',
                         'starting', 'created', 'stopping' => 'yellow',
-                        'terminated', 'expired', 'failed', 'ended' => 'red',
+                        'failed' => 'red',
+                        'terminated', 'expired', 'ended' => '',
                         default => '',
                     };
 
@@ -87,10 +88,14 @@
                             class="session-link"
                             href="{{ route('admin.sessions.show', $session) }}"
                         >
-                            <code title="{{ $session->public_id }}">
-                                {{ $session->public_id }}
-                            </code>
+                            <code class="ce-compact-id" title="{{ $session->public_id }}">{{ \Illuminate\Support\Str::substr($session->public_id, 0, 14).'…'.\Illuminate\Support\Str::substr($session->public_id, -8) }}</code>
                         </a>
+                        <button type="button" class="ce-copy-btn"
+                            data-ce-copy="{{ $session->public_id }}"
+                            data-ce-label-copied="{{ __('ce.sidebar.copied') }}"
+                            data-ce-label-failed="{{ __('ce.sidebar.copy_failed') }}"
+                            title="{{ __('ce.sidebar.copy_id') }}"
+                            aria-label="{{ __('ce.sidebar.copy_id') }}">⧉</button>
                     </td>
 
                     <td>

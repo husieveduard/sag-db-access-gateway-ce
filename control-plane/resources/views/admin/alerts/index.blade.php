@@ -22,7 +22,7 @@
 <tr>
 <td>#{{ $alert->id }}</td>
 <td>{{ $alert->rule?->title }}</td>
-<td><span class="badge">{{ $alert->severity }}</span></td>
+<td><span class="badge {{ in_array($alert->severity, ['critical', 'high'], true) ? 'red' : ($alert->severity === 'medium' ? 'yellow' : '') }}">{{ $alert->severity }}</span></td>
 <td>{{ $alert->resource?->name ?? '—' }}</td>
 <td>{{ $alert->owner?->email ?? '—' }}</td>
 <td>{{ $alert->occurrence_count }} · {{ $alert->last_seen_at?->format('d.m.Y H:i:s') }}</td>
