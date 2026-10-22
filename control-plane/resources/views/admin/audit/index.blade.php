@@ -35,7 +35,7 @@
             <select id="audit-category" name="category">
                 <option value="">{{ __('audit.all') }}</option>
                 @foreach($categories as $category)
-                    <option value="{{ $category }}" @selected(request('category') === $category)>{{ $category }}</option>
+                    <option value="{{ $category }}" @selected(request('category') === $category)>{{ (__('audit.categories')[$category] ?? $category) }}</option>
                 @endforeach
             </select>
         </div>
@@ -44,7 +44,7 @@
             <select id="audit-event-type" name="event_type">
                 <option value="">{{ __('audit.all') }}</option>
                 @foreach($eventTypes as $type)
-                    <option value="{{ $type }}" @selected(request('event_type') === $type)>{{ $type }}</option>
+                    <option value="{{ $type }}" @selected(request('event_type') === $type)>{{ (__('audit.events')[$type] ?? $type) }} · {{ $type }}</option>
                 @endforeach
             </select>
         </div>
@@ -85,8 +85,10 @@
                     <td><code class="ce-audit-id">#{{ $event->id }}</code></td>
                     <td class="ce-audit-time">{{ $clock->format($event->occurred_at) }}</td>
                     <td class="ce-audit-actor">{{ $event->actor?->email ?? __('audit.system') }}</td>
-                    <td><code class="ce-audit-event-code">{{ $event->event_type }}</code></td>
-                    <td>{{ $event->category }}</td>
+                    <td><span class="ce-audit-event-name">{{ (__('audit.events')[$event->event_type] ?? $event->event_type) }}</span>
+                        <code class="ce-audit-event-code">{{ $event->event_type }}</code>
+                    </td>
+                    <td><span class="ce-audit-category">{{ (__('audit.categories')[$event->category] ?? $event->category) }}</span></td>
                     <td>
                         <span class="badge {{ in_array($event->severity, ['critical','high'], true) ? 'red' : ($event->severity === 'medium' ? 'yellow' : '') }}">
                             {{ __('ce.common.'.$event->severity) }}

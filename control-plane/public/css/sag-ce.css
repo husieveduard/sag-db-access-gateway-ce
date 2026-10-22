@@ -2048,3 +2048,8 @@ textarea {
 .ce-audit-redaction-note { color:var(--muted); font-size:12px; margin:12px 0 0; }
 @media(max-width:1050px) { .ce-audit-filters { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media(max-width:600px) { .ce-audit-filters { grid-template-columns:1fr; padding:13px; } .ce-audit-search { grid-column:span 1; } }
+
+/* Audit event semantics: readable titles with exact forensic codes retained. */
+.ce-audit-event-name { display:block; font-weight:700; color:var(--text); margin-bottom:3px; }
+.ce-audit-event-code { display:block; color:var(--muted); font-size:11px; }
+.ce-audit-category { font-size:12px; }

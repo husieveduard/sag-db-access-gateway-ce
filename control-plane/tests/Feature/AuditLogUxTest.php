@@ -77,6 +77,8 @@ class AuditLogUxTest extends TestCase
         $response->assertDontSee('NEVER_SHOW_SECRET');
         $response->assertSee('[REDACTED]');
         $response->assertSee('ce-audit-dialog');
+        $response->assertSee('SQL-запит високого ризику');
+        $response->assertSee('Доступ до БД');
     }
 
     public function test_invalid_filters_fail_and_no_mfa_cannot_read(): void
@@ -89,6 +91,18 @@ class AuditLogUxTest extends TestCase
         $this->get('/admin/audit?ip=invalid-ip')->assertSessionHasErrors('ip');
         $this->get('/admin/audit?from=2026-10-23&to=2026-10-22')
             ->assertSessionHasErrors('to');
+    }
+
+    public function test_informational_severity_has_human_readable_localization(): void
+    {
+        $admin = $this->signIn('superadmin');
+        $event = $this->log($admin, 'access.db.connection.started');
+        $event->forceFill(['severity' => 'info'])->save();
+
+        $this->get('/admin/audit')->assertOk()
+            ->assertSee('Інформаційний')
+            ->assertSee('Підключення до БД відкрито')
+            ->assertDontSee('ce.common.info');
     }
 
     public function test_redaction_preserves_non_sensitive_fields(): void
