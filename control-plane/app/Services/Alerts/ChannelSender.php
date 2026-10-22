@@ -26,9 +26,7 @@ class ChannelSender
             throw new RuntimeException('channel_not_configured');
         }
         $settings=$this->settings($channel);
-        $message = sprintf('SAG CE alert #%s | %s | %s | resource: %s',
-            $event['alert_id'] ?? 'TEST', $event['rule'] ?? 'test',
-            $event['severity'] ?? 'info', $event['resource_id'] ?? '-');
+        $message = $this->humanMessage($event);
         try {
             if ($channel === 'email') {
                 if ($settings['source'] === 'web') {
@@ -85,5 +83,46 @@ class ChannelSender
         } catch (\Throwable) {
             throw new RuntimeException('channel_delivery_failed');
         }
+    }
+
+    /**
+     * Human-readable notification, with identifiers kept for audit correlation.
+     * Do not include SQL text, connection credentials or arbitrary event_data.
+     */
+    private function humanMessage(array $event): string
+    {
+        $risk = (string) ($event['severity'] ?? 'info');
+        $riskLabel = match ($risk) {
+            'critical' => 'Критичний ризик',
+            'high' => 'Високий ризик',
+            'medium' => 'Середній ризик',
+            'low' => 'Низький ризик',
+            default => 'Інформація',
+        };
+        $alertId = $event['alert_id'] ?? 'TEST';
+        $rule = $this->safeLabel($event['rule'] ?? 'channel_test');
+        $title = $this->safeLabel($event['rule_title'] ?? '');
+        $resourceId = $event['resource_id'] ?? null;
+        $resourceName = $this->safeLabel($event['resource_name'] ?? '');
+        $resource = $resourceName !== '' ? $resourceName : '—';
+        if ($resourceId !== null && $resourceId !== '') {
+            $resource .= ' (#'.(int) $resourceId.')';
+        }
+        $lines = [
+            'SAG CE | '.$riskLabel,
+            'Алерт: #'.$alertId,
+            'Подія: '.($title !== '' ? $title.' ('.$rule.')' : $rule),
+            'Ресурс: '.$resource,
+        ];
+        if (isset($event['occurrences']) && (int) $event['occurrences'] > 1) {
+            $lines[] = 'Повторень: '.(int) $event['occurrences'];
+        }
+        return implode("\n", $lines);
+    }
+
+    private function safeLabel(mixed $value): string
+    {
+        $clean = preg_replace('/[\\x00-\\x1F\\x7F]+/u', ' ', (string) $value);
+        return \\Illuminate\\Support\\Str::limit(trim($clean ?? ''), 120);
     }
 }
