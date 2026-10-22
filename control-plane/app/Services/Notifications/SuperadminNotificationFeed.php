@@ -144,7 +144,7 @@ class SuperadminNotificationFeed
                 'key' => 'audit:'.$audit->id,
                 'source_type' => 'audit',
                 'source_id' => $audit->id,
-                'title' => __('notifications.audit.'.$audit->event_type),
+                'title' => __('notifications.audit')[$audit->event_type] ?? $audit->event_type,
                 'detail' => $audit->actor?->name ?: __('notifications.system_actor'),
                 'severity' => $audit->event_type === 'auth.admin.role_changed' ? 'high' : 'medium',
                 'occurred_at' => $audit->occurred_at,
