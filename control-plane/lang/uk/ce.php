@@ -5,6 +5,13 @@ return [
     'product_name' => 'SAG DB Access Gateway',
     'edition' => 'CE',
 
+    'sidebar' => [
+        'collapse' => 'Згорнути меню',
+        'expand' => 'Розгорнути меню',
+        'copy_id' => 'Скопіювати ID',
+        'copied' => 'Скопійовано',
+        'copy_failed' => 'Не вдалося скопіювати',
+    ],
     'navigation' => 'Меню',
     'groups' => ['workspace' => 'Основне', 'monitoring' => 'Моніторинг', 'administration' => 'Адміністрування'],
     'nav' => [

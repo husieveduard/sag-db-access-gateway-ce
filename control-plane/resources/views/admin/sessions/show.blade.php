@@ -7,7 +7,8 @@
     $statusClass = match ($session->status) {
         'started' => 'green',
         'starting', 'created', 'stopping' => 'yellow',
-        'terminated', 'expired', 'failed', 'ended' => 'red',
+        'failed' => 'red',
+        'terminated', 'expired', 'ended' => '',
         default => '',
     };
 
@@ -96,6 +97,12 @@
 
     <h1 class="page-title">
         <code title="{{ $session->public_id }}">{{ $session->public_id }}</code>
+        <button type="button" class="ce-copy-btn ce-copy-header"
+            data-ce-copy="{{ $session->public_id }}"
+            data-ce-label-copied="{{ __('ce.sidebar.copied') }}"
+            data-ce-label-failed="{{ __('ce.sidebar.copy_failed') }}"
+            title="{{ __('ce.sidebar.copy_id') }}"
+            aria-label="{{ __('ce.sidebar.copy_id') }}">⧉</button>
     </h1>
 
     <div class="session-detail-status">

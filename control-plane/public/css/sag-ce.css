@@ -1883,3 +1883,71 @@ textarea {
     .ce-settings-cards { grid-template-columns: 1fr; }
     .ce-settings-card { padding: 18px; }
 }
+
+
+/* ===== CE GUI refinement: collapsible desktop nav, readable identifiers ===== */
+.ce-app-shell { transition: grid-template-columns 160ms ease; }
+.ce-sidebar { overflow-x: hidden; }
+.ce-sidebar-toggle {
+    display: flex; align-items: center; gap: 12px; width: calc(100% - 12px);
+    margin: 0 6px 14px; padding: 9px 11px; border-radius: 9px;
+    border: 1px solid #334963; background: #172c48; color: #cad9eb;
+    font: 650 12px/1.45 inherit; cursor: pointer; text-align: left;
+}
+.ce-sidebar-toggle:hover, .ce-sidebar-toggle:focus-visible {
+    background: #1f4374; color: #fff; border-color: #5176a6;
+}
+.ce-sidebar-toggle-icon { font: 28px/20px Arial,sans-serif; flex: 0 0 20px; text-align: center; }
+.ce-brand-text, .ce-nav-text { min-width: 0; }
+.ce-settings-group[open] > .ce-side-link {
+    background: #1d3250; color: #fff;
+}
+.ce-settings-group[open] > .ce-side-link.is-current { background: #1f4374; }
+.ce-settings-subnav .ce-sub-link.is-current {
+    position: relative; color: #fff; background: #2a5182;
+    box-shadow: inset 3px 0 #93c5fd;
+}
+.ce-app-shell.ce-sidebar-collapsed { grid-template-columns: 76px minmax(0,1fr); }
+.ce-sidebar-collapsed .ce-sidebar { padding-left: 7px; padding-right: 7px; }
+.ce-sidebar-collapsed .ce-sidebar-brand { padding: 7px 0 15px; justify-content: center; }
+.ce-sidebar-collapsed .ce-brand-text,
+.ce-sidebar-collapsed .ce-nav-text,
+.ce-sidebar-collapsed .ce-settings-chevron { display: none; }
+.ce-sidebar-collapsed .ce-sidebar-toggle {
+    width: 48px; margin: 0 auto 14px; justify-content: center; padding: 10px 8px;
+}
+.ce-sidebar-collapsed .ce-sidebar-toggle-icon { transform: rotate(180deg); }
+.ce-sidebar-collapsed .ce-side-nav { gap: 4px; }
+.ce-sidebar-collapsed .ce-side-link { justify-content: center; padding: 12px 6px; }
+.ce-sidebar-collapsed .ce-nav-symbol { width: 24px; font-size: 20px; }
+.ce-sidebar-collapsed .ce-nav-group-label {
+    padding: 0; height: 1px; margin: 14px 9px; background: #42546b;
+    color: transparent; overflow: hidden; font-size: 0;
+}
+.ce-sidebar-collapsed .ce-settings-subnav { display: none; }
+.ce-sidebar-collapsed .ce-settings-group[open] > summary { border-radius: 9px; }
+.ce-id-with-copy { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; }
+.ce-compact-id { display: inline-block; max-width: 194px; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
+.ce-copy-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    flex: 0 0 27px; min-width: 27px; height: 27px; padding: 2px;
+    border: 1px solid #d9e2ec; border-radius: 7px;
+    background: #fff; color: #475467; font-size: 17px; cursor: pointer;
+    vertical-align: middle; margin: 0 0 0 5px;
+}
+.ce-copy-btn:hover, .ce-copy-btn:focus-visible { background: #eff6ff; color: #1d4ed8; border-color: #93c5fd; }
+.ce-copy-btn.is-copied { background: #ecfdf3; border-color: #86efac; color: #166534; }
+.ce-copy-btn.is-copy-error { border-color: #fda29b; color: #b42318; }
+.ce-copy-header { margin-left: 10px; vertical-align: middle; }
+.ce-stat-attention { border-color: #fda29b; box-shadow: inset 0 3px #d92d20; }
+.ce-stat-attention .stat-value { color: #b42318; }
+@media (max-width: 1200px) and (min-width: 921px) {
+    .ce-app-shell.ce-sidebar-collapsed { grid-template-columns: 76px minmax(0,1fr); }
+}
+@media (max-width: 920px) {
+    .ce-app-shell.ce-sidebar-collapsed { display: block; }
+    .ce-sidebar-toggle { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .ce-app-shell { transition: none; }
+}

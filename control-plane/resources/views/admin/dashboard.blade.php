@@ -68,7 +68,7 @@
         <div class="stat-value">{{ $stats['open_connections'] }}</div>
     </div>
 
-    <div class="card stat">
+    <div class="card stat {{ $stats['high_risk_24h'] > 0 ? 'ce-stat-attention' : '' }}">
         <div class="stat-label">{{ __('dashboard.stats.high_risk_24h') }}</div>
         <div class="stat-value">{{ $stats['high_risk_24h'] }}</div>
     </div>
@@ -98,16 +98,23 @@
                         $statusClass = match ($session->status) {
                             'started' => 'green',
                             'starting', 'created' => 'yellow',
-                            'terminated', 'expired', 'failed', 'ended' => 'red',
+                            'failed' => 'red',
+                        'terminated', 'expired', 'ended' => '',
                             default => '',
                         };
                     @endphp
 
                     <tr>
                         <td>
-                            <code title="{{ $session->public_id }}">
-                                {{ $session->public_id }}
-                            </code>
+                            <span class="ce-id-with-copy">
+                            <code class="ce-compact-id" title="{{ $session->public_id }}">{{ \Illuminate\Support\Str::substr($session->public_id, 0, 14).'…'.\Illuminate\Support\Str::substr($session->public_id, -8) }}</code>
+                            <button type="button" class="ce-copy-btn"
+                                data-ce-copy="{{ $session->public_id }}"
+                                data-ce-label-copied="{{ __('ce.sidebar.copied') }}"
+                                data-ce-label-failed="{{ __('ce.sidebar.copy_failed') }}"
+                                title="{{ __('ce.sidebar.copy_id') }}"
+                                aria-label="{{ __('ce.sidebar.copy_id') }}">⧉</button>
+                        </span>
                         </td>
 
                         <td>
@@ -200,9 +207,19 @@
                         <td>
                             <strong>{{ $query->resource?->name ?? $notAvailable }}</strong><br>
 
-                            <code title="{{ $query->session?->public_id }}">
-                                {{ $query->session?->public_id ?? $notAvailable }}
-                            </code>
+                            @if ($query->session?->public_id)
+                                <span class="ce-id-with-copy">
+                            <code class="ce-compact-id" title="{{ $query->session->public_id }}">{{ \Illuminate\Support\Str::substr($query->session->public_id, 0, 14).'…'.\Illuminate\Support\Str::substr($query->session->public_id, -8) }}</code>
+                            <button type="button" class="ce-copy-btn"
+                                data-ce-copy="{{ $query->session->public_id }}"
+                                data-ce-label-copied="{{ __('ce.sidebar.copied') }}"
+                                data-ce-label-failed="{{ __('ce.sidebar.copy_failed') }}"
+                                title="{{ __('ce.sidebar.copy_id') }}"
+                                aria-label="{{ __('ce.sidebar.copy_id') }}">⧉</button>
+                        </span>
+                            @else
+                                {{ $notAvailable }}
+                            @endif
                         </td>
 
                         <td><span class="badge">{{ $query->statement_type }}</span></td>
@@ -218,7 +235,7 @@
                         </td>
 
                         <td>
-                            <span class="badge">
+                            <span class="badge {{ $query->query_status === 'failed' ? 'red' : '' }}">
                                 {{ $queryStatusLabels[$query->query_status]
                                     ?? $query->query_status }}
                             </span>

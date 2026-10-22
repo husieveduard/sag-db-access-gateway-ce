@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>@yield('title', __('ce.app_title'))</title>
-    <link rel="stylesheet" href="{{ asset('css/sag-ce.css') }}?v=20261022-settings-hub-1">
+    <link rel="stylesheet" href="{{ asset('css/sag-ce.css') }}?v=20261022-gui-refinement-1">
+    <script src="{{ asset('js/ce-ui.js') }}?v=20261022-gui-refinement-1" defer></script>
 </head>
 <body>
     @php
@@ -23,46 +24,55 @@
     @auth
     <div class="ce-app-shell">
         <aside class="ce-sidebar" aria-label="{{ __('ce.navigation') }}">
-            <a class="ce-sidebar-brand" href="{{ route('admin.dashboard') }}">
+            <a class="ce-sidebar-brand" href="{{ route('admin.dashboard') }}" title="{{ __('ce.nav.dashboard') }}" aria-label="{{ __('ce.nav.dashboard') }}">
                 <span class="ce-brand-icon" aria-hidden="true">S</span>
-                <span>{{ __('ce.product_name') }} <small>{{ __('ce.edition') }}</small></span>
+                <span class="ce-brand-text">{{ __('ce.product_name') }} <small>{{ __('ce.edition') }}</small></span>
             </a>
+            <button id="ce-sidebar-toggle" type="button" class="ce-sidebar-toggle"
+                aria-label="{{ __('ce.sidebar.collapse') }}"
+                title="{{ __('ce.sidebar.collapse') }}"
+                aria-expanded="true"
+                data-ce-label-expand="{{ __('ce.sidebar.expand') }}"
+                data-ce-label-collapse="{{ __('ce.sidebar.collapse') }}">
+                <span class="ce-sidebar-toggle-icon" aria-hidden="true">‹</span>
+                <span class="ce-nav-text">{{ __('ce.sidebar.collapse') }}</span>
+            </button>
             <nav class="ce-side-nav" aria-label="{{ __('ce.navigation') }}">
                 <div class="ce-nav-group-label">{{ __('ce.groups.workspace') }}</div>
                 <a class="ce-side-link {{ request()->routeIs('admin.dashboard') ? 'is-current' : '' }}"
                     href="{{ route('admin.dashboard') }}" @if(request()->routeIs('admin.dashboard')) aria-current="page" @endif>
-                    <span class="ce-nav-symbol" aria-hidden="true">◫</span>{{ __('ce.nav.dashboard') }}
+                    <span class="ce-nav-symbol" aria-hidden="true">◫</span><span class="ce-nav-text">{{ __('ce.nav.dashboard') }}</span>
                 </a>
                 <a class="ce-side-link {{ request()->routeIs('admin.resources.*') ? 'is-current' : '' }}"
-                    href="{{ route('admin.resources.index') }}" @if(request()->routeIs('admin.resources.*')) aria-current="page" @endif>
-                    <span class="ce-nav-symbol" aria-hidden="true">▤</span>{{ __('ce.nav.resources') }}
+                    href="{{ route('admin.resources.index') }}" title="{{ __('ce.nav.resources') }}" aria-label="{{ __('ce.nav.resources') }}" @if(request()->routeIs('admin.resources.*')) aria-current="page" @endif>
+                    <span class="ce-nav-symbol" aria-hidden="true">▤</span><span class="ce-nav-text">{{ __('ce.nav.resources') }}</span>
                 </a>
                 <a class="ce-side-link {{ request()->routeIs('admin.sessions.*') ? 'is-current' : '' }}"
-                    href="{{ route('admin.sessions.index') }}" @if(request()->routeIs('admin.sessions.*')) aria-current="page" @endif>
-                    <span class="ce-nav-symbol" aria-hidden="true">◷</span>{{ __('ce.nav.sessions') }}
+                    href="{{ route('admin.sessions.index') }}" title="{{ __('ce.nav.sessions') }}" aria-label="{{ __('ce.nav.sessions') }}" @if(request()->routeIs('admin.sessions.*')) aria-current="page" @endif>
+                    <span class="ce-nav-symbol" aria-hidden="true">◷</span><span class="ce-nav-text">{{ __('ce.nav.sessions') }}</span>
                 </a>
 
                 <div class="ce-nav-group-label">{{ __('ce.groups.monitoring') }}</div>
                 <a class="ce-side-link {{ request()->routeIs('admin.alerts.*') ? 'is-current' : '' }}"
-                    href="{{ route('admin.alerts.index') }}" @if(request()->routeIs('admin.alerts.*')) aria-current="page" @endif>
-                    <span class="ce-nav-symbol" aria-hidden="true">◇</span>{{ __('alerts.nav') }}
+                    href="{{ route('admin.alerts.index') }}" title="{{ __('alerts.nav') }}" aria-label="{{ __('alerts.nav') }}" @if(request()->routeIs('admin.alerts.*')) aria-current="page" @endif>
+                    <span class="ce-nav-symbol" aria-hidden="true">◇</span><span class="ce-nav-text">{{ __('alerts.nav') }}</span>
                 </a>
                 @if(auth()->user()->isSuperAdmin())
                     <a class="ce-side-link {{ request()->routeIs('admin.alert-health.*') ? 'is-current' : '' }}"
-                        href="{{ route('admin.alert-health.index') }}" @if(request()->routeIs('admin.alert-health.*')) aria-current="page" @endif>
-                        <span class="ce-nav-symbol" aria-hidden="true">◉</span>{{ __('ce.nav.alert_health') }}
+                        href="{{ route('admin.alert-health.index') }}" title="{{ __('ce.nav.alert_health') }}" aria-label="{{ __('ce.nav.alert_health') }}" @if(request()->routeIs('admin.alert-health.*')) aria-current="page" @endif>
+                        <span class="ce-nav-symbol" aria-hidden="true">◉</span><span class="ce-nav-text">{{ __('ce.nav.alert_health') }}</span>
                     </a>
                 @endif
                 <a class="ce-side-link {{ request()->routeIs('admin.audit.*') ? 'is-current' : '' }}"
-                    href="{{ route('admin.audit.index') }}" @if(request()->routeIs('admin.audit.*')) aria-current="page" @endif>
-                    <span class="ce-nav-symbol" aria-hidden="true">≡</span>{{ __('ce.nav.audit') }}
+                    href="{{ route('admin.audit.index') }}" title="{{ __('ce.nav.audit') }}" aria-label="{{ __('ce.nav.audit') }}" @if(request()->routeIs('admin.audit.*')) aria-current="page" @endif>
+                    <span class="ce-nav-symbol" aria-hidden="true">≡</span><span class="ce-nav-text">{{ __('ce.nav.audit') }}</span>
                 </a>
                 @if(auth()->user()->isSuperAdmin())
                     <div class="ce-nav-group-label">{{ __('ce.groups.administration') }}</div>
                     <details class="ce-settings-group" @if($settingsActive) open @endif>
-                        <summary class="ce-side-link {{ $settingsActive ? 'is-current' : '' }}">
+                        <summary class="ce-side-link {{ $settingsActive ? 'is-current' : '' }}" title="{{ __('ce.nav.settings') }}" aria-label="{{ __('ce.nav.settings') }}">
                             <span class="ce-nav-symbol" aria-hidden="true">⚙</span>
-                            <span>{{ __('ce.nav.settings') }}</span>
+                            <span class="ce-nav-text">{{ __('ce.nav.settings') }}</span>
                             <span class="ce-settings-chevron" aria-hidden="true">⌄</span>
                         </summary>
                         <div class="ce-settings-subnav">
