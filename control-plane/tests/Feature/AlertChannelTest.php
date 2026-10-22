@@ -66,7 +66,7 @@ class AlertChannelTest extends TestCase {
             'rule_title' => 'Небезпечний SQL-запит',
             'severity' => 'high',
             'resource_id' => 1,
-            'resource_name' => "SAG CE PostgreSQL LAB\\nFORGED",
+            'resource_name' => "SAG CE PostgreSQL LAB\nFORGED",
             'occurrences' => 4,
             'sql' => 'PASSWORD secret',
         ]);
