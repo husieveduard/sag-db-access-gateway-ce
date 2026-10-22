@@ -5,11 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>@yield('title', __('ce.app_title'))</title>
-    <link rel="stylesheet" href="{{ asset('css/sag-ce.css') }}?v=20261022-modern-nav-1">
+    <link rel="stylesheet" href="{{ asset('css/sag-ce.css') }}?v=20261022-settings-hub-1">
 </head>
 <body>
     @php
         $currentLocale = app()->getLocale();
+    @endphp
+
+    @php
+        $settingsActive = request()->routeIs('admin.settings.*')
+            || request()->routeIs('admin.ad-settings.*')
+            || request()->routeIs('admin.administrators.*')
+            || request()->routeIs('admin.alert-channels.*')
+            || request()->routeIs('admin.alert-rules.*');
     @endphp
 
     @auth
@@ -39,32 +47,47 @@
                     href="{{ route('admin.alerts.index') }}" @if(request()->routeIs('admin.alerts.*')) aria-current="page" @endif>
                     <span class="ce-nav-symbol" aria-hidden="true">◇</span>{{ __('alerts.nav') }}
                 </a>
+                @if(auth()->user()->isSuperAdmin())
+                    <a class="ce-side-link {{ request()->routeIs('admin.alert-health.*') ? 'is-current' : '' }}"
+                        href="{{ route('admin.alert-health.index') }}" @if(request()->routeIs('admin.alert-health.*')) aria-current="page" @endif>
+                        <span class="ce-nav-symbol" aria-hidden="true">◉</span>{{ __('ce.nav.alert_health') }}
+                    </a>
+                @endif
                 <a class="ce-side-link {{ request()->routeIs('admin.audit.*') ? 'is-current' : '' }}"
                     href="{{ route('admin.audit.index') }}" @if(request()->routeIs('admin.audit.*')) aria-current="page" @endif>
                     <span class="ce-nav-symbol" aria-hidden="true">≡</span>{{ __('ce.nav.audit') }}
                 </a>
                 @if(auth()->user()->isSuperAdmin())
                     <div class="ce-nav-group-label">{{ __('ce.groups.administration') }}</div>
-                    <a class="ce-side-link {{ request()->routeIs('admin.alert-health.*') ? 'is-current' : '' }}"
-                        href="{{ route('admin.alert-health.index') }}" @if(request()->routeIs('admin.alert-health.*')) aria-current="page" @endif>
-                        <span class="ce-nav-symbol" aria-hidden="true">◉</span>{{ __('ce.nav.alert_health') }}
-                    </a>
-                    <a class="ce-side-link {{ request()->routeIs('admin.alert-channels.*') ? 'is-current' : '' }}"
-                        href="{{ route('admin.alert-channels.index') }}" @if(request()->routeIs('admin.alert-channels.*')) aria-current="page" @endif>
-                        <span class="ce-nav-symbol" aria-hidden="true">↗</span>{{ __('ce.nav.alert_channels') }}
-                    </a>
-                    <a class="ce-side-link {{ request()->routeIs('admin.alert-rules.*') ? 'is-current' : '' }}"
-                        href="{{ route('admin.alert-rules.index') }}" @if(request()->routeIs('admin.alert-rules.*')) aria-current="page" @endif>
-                        <span class="ce-nav-symbol" aria-hidden="true">☷</span>{{ __('alerts.rules_nav') }}
-                    </a>
-                    <a class="ce-side-link {{ request()->routeIs('admin.ad-settings.*') ? 'is-current' : '' }}"
-                        href="{{ route('admin.ad-settings.index') }}" @if(request()->routeIs('admin.ad-settings.*')) aria-current="page" @endif>
-                        <span class="ce-nav-symbol" aria-hidden="true">⌘</span>Active Directory
-                    </a>
-                    <a class="ce-side-link {{ request()->routeIs('admin.administrators.*') ? 'is-current' : '' }}"
-                        href="{{ route('admin.administrators.index') }}" @if(request()->routeIs('admin.administrators.*')) aria-current="page" @endif>
-                        <span class="ce-nav-symbol" aria-hidden="true">♙</span>{{ __('ce.nav.administrators') }}
-                    </a>
+                    <details class="ce-settings-group" @if($settingsActive) open @endif>
+                        <summary class="ce-side-link {{ $settingsActive ? 'is-current' : '' }}">
+                            <span class="ce-nav-symbol" aria-hidden="true">⚙</span>
+                            <span>{{ __('ce.nav.settings') }}</span>
+                            <span class="ce-settings-chevron" aria-hidden="true">⌄</span>
+                        </summary>
+                        <div class="ce-settings-subnav">
+                            <a class="ce-sub-link {{ request()->routeIs('admin.settings.*') ? 'is-current' : '' }}"
+                                href="{{ route('admin.settings.index') }}" @if(request()->routeIs('admin.settings.*')) aria-current="page" @endif>
+                                {{ __('ce.nav.settings_overview') }}
+                            </a>
+                            <a class="ce-sub-link {{ request()->routeIs('admin.administrators.*') ? 'is-current' : '' }}"
+                                href="{{ route('admin.administrators.index') }}" @if(request()->routeIs('admin.administrators.*')) aria-current="page" @endif>
+                                {{ __('ce.nav.administrators') }}
+                            </a>
+                            <a class="ce-sub-link {{ request()->routeIs('admin.ad-settings.*') ? 'is-current' : '' }}"
+                                href="{{ route('admin.ad-settings.index') }}" @if(request()->routeIs('admin.ad-settings.*')) aria-current="page" @endif>
+                                Active Directory
+                            </a>
+                            <a class="ce-sub-link {{ request()->routeIs('admin.alert-channels.*') ? 'is-current' : '' }}"
+                                href="{{ route('admin.alert-channels.index') }}" @if(request()->routeIs('admin.alert-channels.*')) aria-current="page" @endif>
+                                {{ __('ce.nav.alert_channels') }}
+                            </a>
+                            <a class="ce-sub-link {{ request()->routeIs('admin.alert-rules.*') ? 'is-current' : '' }}"
+                                href="{{ route('admin.alert-rules.index') }}" @if(request()->routeIs('admin.alert-rules.*')) aria-current="page" @endif>
+                                {{ __('alerts.rules_nav') }}
+                            </a>
+                        </div>
+                    </details>
                 @endif
             </nav>
         </aside>
@@ -81,10 +104,14 @@
                         <a href="{{ route('admin.audit.index') }}">{{ __('ce.nav.audit') }}</a>
                         @if(auth()->user()->isSuperAdmin())
                             <a href="{{ route('admin.alert-health.index') }}">{{ __('ce.nav.alert_health') }}</a>
-                            <a href="{{ route('admin.alert-channels.index') }}">{{ __('ce.nav.alert_channels') }}</a>
-                            <a href="{{ route('admin.alert-rules.index') }}">{{ __('alerts.rules_nav') }}</a>
-                            <a href="{{ route('admin.ad-settings.index') }}">Active Directory</a>
-                            <a href="{{ route('admin.administrators.index') }}">{{ __('ce.nav.administrators') }}</a>
+                            <details class="ce-mobile-settings" @if($settingsActive) open @endif>
+                                <summary>{{ __('ce.nav.settings') }}</summary>
+                                <a href="{{ route('admin.settings.index') }}">{{ __('ce.nav.settings_overview') }}</a>
+                                <a href="{{ route('admin.administrators.index') }}">{{ __('ce.nav.administrators') }}</a>
+                                <a href="{{ route('admin.ad-settings.index') }}">Active Directory</a>
+                                <a href="{{ route('admin.alert-channels.index') }}">{{ __('ce.nav.alert_channels') }}</a>
+                                <a href="{{ route('admin.alert-rules.index') }}">{{ __('alerts.rules_nav') }}</a>
+                            </details>
                         @endif
                     </nav>
                 </details>

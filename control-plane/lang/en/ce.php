@@ -15,6 +15,22 @@ return [
         'audit' => 'Audit log',
         'alert_health' => 'Alert health',
         'alert_channels' => 'Notification channels',
+        'settings' => 'Settings',
+        'settings_overview' => 'Settings overview',
+    ],
+
+
+    'settings' => [
+        'title' => 'System settings',
+        'description' => 'Manage access, directories, and notification channels for SAG CE.',
+        'access' => 'Users and access',
+        'alerts' => 'Notifications and rules',
+        'admins_desc' => 'Local administrators, Superadmin permissions, and account management.',
+        'ad_desc' => 'Connect Active Directory, LDAP/LDAPS, and test directory access.',
+        'channels_desc' => 'Telegram, SMTP email, Slack, Teams, Nextcloud Talk, and Webhook.',
+        'rules_desc' => 'Security rule toggles, severity, and deduplication intervals.',
+        'future_title' => 'Planned extensions',
+        'future_desc' => 'Future: access and MFA policies, audit retention, general settings, and SIEM integrations. These options are not yet available.',
     ],
 
     'role' => [
