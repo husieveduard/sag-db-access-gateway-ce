@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>@yield('title', __('ce.app_title'))</title>
-    <link rel="stylesheet" href="{{ asset('css/sag-ce.css') }}?v=20261022-gui-refinement-1">
+    <link rel="stylesheet" href="{{ asset('css/sag-ce.css') }}?v=20261022-notification-center-1">
     <script src="{{ asset('js/ce-ui.js') }}?v=20261022-gui-refinement-1" defer></script>
 </head>
 <body>
@@ -127,6 +127,39 @@
                 </details>
                 <span class="ce-workspace-context">{{ __('ce.app_title') }}</span>
                 <div class="ce-account-actions">
+                    @if(auth()->user()->isSuperAdmin())
+                        <div class="ce-notification" id="ce-notification"
+                            data-feed-url="{{ route('admin.notifications.feed') }}"
+                            data-read-url="{{ route('admin.notifications.read') }}"
+                            data-read-all-url="{{ route('admin.notifications.read-all') }}">
+                            <button type="button" id="ce-notification-trigger" class="ce-notification-trigger"
+                                aria-label="{{ __('notifications.heading') }}" aria-haspopup="true" aria-expanded="false"
+                                aria-controls="ce-notification-panel" title="{{ __('notifications.heading') }}">
+                                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/>
+                                    <path d="M10 21h4"/>
+                                </svg>
+                                <span id="ce-notification-count" class="ce-notification-count" hidden></span>
+                            </button>
+                            <div class="ce-notification-panel" id="ce-notification-panel" hidden>
+                                <div class="ce-notification-panel-head">
+                                    <strong>{{ __('notifications.heading') }}</strong>
+                                    <button type="button" class="ce-notification-mark-all" id="ce-notification-read-all">{{ __('notifications.mark_all') }}</button>
+                                </div>
+                                <div class="ce-notification-items" id="ce-notification-items" aria-live="polite">
+                                    <p class="ce-notification-empty">{{ __('notifications.loading') }}</p>
+                                </div>
+                                <a class="ce-notification-all" href="{{ route('admin.notifications.index') }}">{{ __('notifications.all') }} →</a>
+                            </div>
+                            <template id="ce-notification-labels"
+                                data-empty="{{ __('notifications.empty_short') }}"
+                                data-unavailable="{{ __('notifications.unavailable') }}"
+                                data-read="{{ __('notifications.mark_read') }}"
+                                data-open="{{ __('notifications.open') }}"></template>
+                        </div>
+                    @endif
+
                     <div class="locale-switcher" aria-label="{{ __('ce.language') }}">
                         @foreach (['uk' => 'UA', 'en' => 'EN'] as $locale => $label)
                             <form method="POST" action="{{ route('locale.update', ['locale' => $locale]) }}">
