@@ -8,6 +8,7 @@ import (
  "errors"
  "flag"
  "fmt"
+ "io"
  "net"
  "os"
  "strings"
@@ -79,3 +80,13 @@ func main() {
 }
 func fail(err error){fmt.Fprintln(os.Stderr,"LAB_BACKEND_FAILED:",err);os.Exit(1)}
 var _ net.Conn
+
+func readPgMessage(r io.Reader)(byte,[]byte,[]byte,error){
+ header:=make([]byte,5)
+ if _,err:=io.ReadFull(r,header);err!=nil{return 0,nil,nil,err}
+ size:=int(binary.BigEndian.Uint32(header[1:5]))
+ if size<4||size>1024*1024{return 0,nil,nil,errors.New("invalid PostgreSQL frame length")}
+ payload:=make([]byte,size-4)
+ if _,err:=io.ReadFull(r,payload);err!=nil{return 0,nil,nil,err}
+ return header[0],payload,append(header,payload...),nil
+}
