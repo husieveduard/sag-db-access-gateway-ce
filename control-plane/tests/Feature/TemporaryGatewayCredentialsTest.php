@@ -92,4 +92,21 @@ class TemporaryGatewayCredentialsTest extends TestCase
         }
     }
 
+    public function test_failed_or_expired_session_cannot_issue_credentials(): void
+    {
+        $service = app(TemporaryGatewayCredentials::class);
+        $failed = $this->makeSession();
+        $failed->update(['status' => 'failed']);
+        $this->expectException(DomainException::class);
+        $service->issue($failed->fresh());
+    }
+
+    public function test_expired_created_session_cannot_issue_credentials(): void
+    {
+        $session = $this->makeSession();
+        $session->update(['expires_at' => now()->subSecond()]);
+        $this->expectException(DomainException::class);
+        app(TemporaryGatewayCredentials::class)->issue($session->fresh());
+    }
+
 }
