@@ -31,10 +31,12 @@ final class ResourceCredentialController extends Controller
             'Cannot rotate credentials while gateway sessions are active.'
         );
 
-        // Encrypt before opening the database transaction; never audit password contents.
+        // Never audit or expose password contents.
         DB::transaction(function () use ($request, $resource, $data, $vault): void {
-            $existing = DatabaseResourceCredential::query()
-                ->where('resource_id', $resource->id)->exists();
+            $previous = DatabaseResourceCredential::query()
+                ->where('resource_id', $resource->id)->first(['username']);
+            $existing = $previous !== null;
+            $usernameChanged = $existing && $previous->username !== trim($data['username']);
 
             $vault->replace(
                 $resource->id,
@@ -54,6 +56,8 @@ final class ResourceCredentialController extends Controller
                 'ip_address' => $request->ip(),
                 'event_data' => [
                     'resource_id' => $resource->id,
+                    'username_changed' => $usernameChanged,
+                    'password_rotated' => $existing,
                     'credential_storage' => 'encrypted',
                     'password_exposed' => false,
                 ],
