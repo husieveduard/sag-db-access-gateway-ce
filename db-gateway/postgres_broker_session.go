@@ -40,6 +40,9 @@ func pgBrokerServeAuthenticatedSession(
  credentials.Password=""
  if err!=nil{return errors.New("backend authentication failed")}
  defer backend.Close()
+ if !checkBrokerSessionActive(ctx,controlClient,controlURL,internalToken,sessionUID) {return errors.New("session no longer authorized")}
+ stopGuard:=watchBrokerSession(ctx,controlClient,controlURL,internalToken,sessionUID,frontend,backend)
+ defer stopGuard()
  if err=pgBrokerSendFrontendReady(frontend);err!=nil{return err}
  // Restrict this initial lab broker to the PostgreSQL simple query protocol.
  // Extended query, replication, COPY, cancel and notification forwarding
@@ -53,6 +56,7 @@ func pgBrokerServeAuthenticatedSession(
   if kind!='Q'||len(payload)<2||payload[len(payload)-1]!=0{
    return errors.New("unsupported PostgreSQL frontend message")
   }
+  if !checkBrokerSessionActive(ctx,controlClient,controlURL,internalToken,sessionUID){return errors.New("session revoked or expired")}
   // Avoid silently sending protocol control messages from the frontend.
   frame:=make([]byte,5+len(payload))
   frame[0]='Q'
