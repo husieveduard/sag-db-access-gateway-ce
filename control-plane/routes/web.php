@@ -3,6 +3,7 @@
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\OperationController;
 use App\Http\Controllers\Admin\ResourceController;
+use App\Http\Controllers\Admin\ResourceCredentialController;
 use App\Http\Controllers\Admin\SessionController;
 use App\Http\Controllers\Admin\AdministratorController;
 use App\Http\Controllers\Admin\AuditController;
@@ -110,6 +111,9 @@ Route::middleware(['auth', 'ce.admin', 'ce.mfa'])
         Route::post('/resources', [ResourceController::class, 'store'])
             ->middleware('throttle:10,1')
             ->name('resources.store');
+
+        Route::post('/resources/{resource}/credentials', [ResourceCredentialController::class, 'update'])
+            ->middleware('throttle:5,1')->name('resources.credentials.update');
 
         Route::get('/resources/{resource}/edit', [ResourceController::class, 'edit'])
             ->name('resources.edit');

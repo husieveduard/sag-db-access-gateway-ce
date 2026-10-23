@@ -172,4 +172,11 @@ return [
             ],
         ],
     ],
-];
+    'credential_vault' => [
+        'heading' => 'PostgreSQL credentials',
+        'notice' => 'Superadmin only. Password is encrypted; real credentials are not disclosed to end users.',
+        'username' => 'Technical username',
+        'password' => 'New password',
+        'submit' => 'Save credentials',
+    ],
+]; 
