@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\AuditEvent;
 use App\Models\DatabaseResource;
+use App\Models\DatabaseResourceCredential;
 use App\Models\DbAccessSession;
 use Closure;
 use DomainException;
@@ -142,6 +143,9 @@ class ResourceController extends Controller
         return view('admin.resources.edit', [
             'resource' => $resource,
             'engines' => self::ENGINES,
+            'vaultCredential' => auth()->user()->isSuperAdmin() && $resource->engine === 'postgresql'
+                ? DatabaseResourceCredential::query()->where('resource_id', $resource->id)->first(['username', 'updated_at'])
+                : null,
         ]);
     }
 
