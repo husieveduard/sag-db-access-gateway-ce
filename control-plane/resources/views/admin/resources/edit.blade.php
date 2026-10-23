@@ -177,12 +177,13 @@
 <section class="card form-card">
     <h2>{{ __('resources.credential_vault.heading') }}</h2>
     <p class="hint">{{ __('resources.credential_vault.notice') }}</p>
+    <p class="hint">{{ $vaultCredential ? __('resources.credential_vault.configured') : __('resources.credential_vault.not_configured') }}</p>
     <form method="POST" action="{{ route('admin.resources.credentials.update', $resource) }}" autocomplete="off">
         @csrf
         <div class="form-grid">
             <div>
                 <label for="vault_username">{{ __('resources.credential_vault.username') }}</label>
-                <input id="vault_username" name="username" type="text" maxlength="128" required autocomplete="off">
+                <input id="vault_username" name="username" type="text" maxlength="128" required autocomplete="off" value="{{ old('username', $vaultCredential?->username ?? '') }}">
                 @error('username') <div class="field-error">{{ $message }}</div> @enderror
             </div>
             <div>
