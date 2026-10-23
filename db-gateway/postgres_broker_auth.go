@@ -23,7 +23,7 @@ func pgBrokerStartupUserDatabase(packet []byte) (string, string, error) {
  if len(body) < 2 || body[len(body)-1] != 0 || body[len(body)-2] != 0 {
   return "", "", errors.New("malformed postgres startup options")
  }
- fields := bytes.Split(body[:len(body)-1], []byte{0})
+ fields := bytes.Split(body[:len(body)-2], []byte{0})
  if len(fields)%2 != 0 { return "", "", errors.New("uneven postgres startup options") }
  options := make(map[string]string, len(fields)/2)
  for i:=0; i<len(fields); i+=2 {
