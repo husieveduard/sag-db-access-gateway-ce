@@ -3,6 +3,8 @@ package main
 import (
  "encoding/binary"
  "net"
+ "io"
+ "time"
  "strings"
  "testing"
 )
@@ -37,10 +39,12 @@ func TestPgBrokerRejectsWrongDatabaseBeforePassword(t *testing.T) {
 func TestPgBrokerVerifiesTemporaryPassword(t *testing.T) {
  for _,tc:=range []struct{password string; allowed bool}{{"valid",true},{"wrong",false}} {
   client,server:=net.Pipe()
+  _ = client.SetDeadline(time.Now().Add(3*time.Second))
+  _ = server.SetDeadline(time.Now().Add(3*time.Second))
   done:=make(chan error,1)
   go func(){done<-pgBrokerVerifyFrontend(server,pgTestStartup("user","sag_one","database","sag_ce_lab"),"sag_ce_lab",func(u,p string)bool{return u=="sag_one"&&p=="valid"})}()
   request:=make([]byte,9)
-  if _,err:=client.Read(request);err!=nil{t.Fatal(err)}
+  if _,err:=io.ReadFull(client,request);err!=nil{t.Fatal(err)}
   if request[0]!='R'||binary.BigEndian.Uint32(request[5:])!=3 {t.Fatal("missing cleartext auth challenge")}
   payload:=[]byte(tc.password+"\x00")
   response:=make([]byte,5+len(payload)); response[0]='p'
