@@ -173,6 +173,8 @@ return [
         ],
     ],
     'credential_vault' => [
+        'configured' => 'Credentials configured. Password is hidden.',
+        'not_configured' => 'Credentials not configured yet.',
         'heading' => 'PostgreSQL credentials',
         'notice' => 'Superadmin only. Password is encrypted; real credentials are not disclosed to end users.',
         'username' => 'Technical username',
