@@ -76,12 +76,21 @@ class ResourceCredentialAccessTest extends TestCase
         ]);
         $this->assertStringNotContainsString($secret, AuditEvent::where('resource_id', $resource->id)->firstOrFail()->toJson());
 
+        $this->get(route('admin.resources.edit', $resource))
+            ->assertOk()->assertSee('value="backend_user"', false)
+            ->assertDontSee($secret);
+
         $this->post(route('admin.resources.credentials.update', $resource), [
-            'username' => 'backend_user',
+            'username' => 'backend_user_v2',
             'password' => 'second-secret',
         ])->assertRedirect();
         $this->assertSame(1, DatabaseResourceCredential::where('resource_id', $resource->id)->count());
         $this->assertSame('second-secret', app(ResourceCredentialVault::class)->retrieveForGateway($resource->id)['password']);
+        $this->assertSame('backend_user_v2', DatabaseResourceCredential::where('resource_id', $resource->id)->firstOrFail()->username);
+        $rotated = AuditEvent::where('resource_id', $resource->id)->where('event_type', 'access.db.credentials.rotated')->firstOrFail();
+        $this->assertTrue((bool) $rotated->event_data['username_changed']);
+        $this->assertTrue((bool) $rotated->event_data['password_rotated']);
+        $this->assertStringNotContainsString('second-secret', $rotated->toJson());
         $this->assertDatabaseHas('audit_events', ['resource_id' => $resource->id, 'event_type' => 'access.db.credentials.rotated']);
     }
 
