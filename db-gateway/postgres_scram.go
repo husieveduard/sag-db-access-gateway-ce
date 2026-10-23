@@ -6,11 +6,8 @@ import (
  "crypto/sha256"
  "encoding/base64"
  "errors"
- "fmt"
- "hash"
  "strconv"
  "strings"
- "crypto/pbkdf2"
 )
 
 type pgSCRAMClient struct {
@@ -53,8 +50,7 @@ func (s *pgSCRAMClient) continueWith(serverFirst string)(string,error){
  iterations,err:=strconv.Atoi(fields["i"])
  if err!=nil||iterations<4096||iterations>1000000{return "",errors.New("invalid SCRAM iteration count")}
  if fields["m"]!=""{return "",errors.New("unsupported SCRAM mandatory extension")}
- salted,err:=pbkdf2.Key(sha256.New,[]byte(s.password),salt,iterations,32)
- if err!=nil{return "",err}
+ salted:=pgSCRAMPBKDF2([]byte(s.password),salt,iterations)
  clientKey:=pgSCRAMHMAC(salted,"Client Key")
  storedKey:=sha256.Sum256(clientKey)
  withoutProof:="c=biws,r="+nonce
@@ -75,5 +71,20 @@ func (s *pgSCRAMClient) finish(serverFinal string)error{
  if err!=nil||!hmac.Equal(signature,s.expectedServerSignature){return errors.New("SCRAM server signature mismatch")}
  return nil
 }
-var _ hash.Hash = sha256.New()
-var _ = fmt.Sprintf
+// PBKDF2-HMAC-SHA256 single block (dkLen=32), compatible with Go 1.22.
+func pgSCRAMPBKDF2(password,salt []byte,iterations int) []byte {
+ seed:=make([]byte,len(salt)+4)
+ copy(seed,salt)
+ seed[len(salt)+3]=1
+ mac:=hmac.New(sha256.New,password)
+ _,_=mac.Write(seed)
+ previous:=mac.Sum(nil)
+ output:=append([]byte(nil),previous...)
+ for n:=1;n<iterations;n++{
+  mac.Reset()
+  _,_=mac.Write(previous)
+  previous=mac.Sum(nil)
+  for i:=range output {output[i]^=previous[i]}
+ }
+ return output
+}
