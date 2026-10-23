@@ -111,7 +111,7 @@ jobs:
           DB_PASSWORD: postgres_test_only
         run: |
           mkdir -p storage/framework/views storage/framework/cache/data storage/framework/sessions bootstrap/cache
-          php artisan test --filter='LifecycleHardeningTest|GatewayAuditRedactionTest|ResourceCredentialVaultTest|ResourceCredentialAccessTest'
+          php artisan test --filter='LifecycleHardeningTest|GatewayAuditRedactionTest|ResourceCredentialVaultTest|ResourceCredentialAccessTest|TemporaryGatewayCredentialsTest'
 
   live-gateway:
     name: Real gateway Linux lifecycle
