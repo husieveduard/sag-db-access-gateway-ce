@@ -172,4 +172,30 @@
         </a>
     </div>
 </form>
+
+@if (auth()->user()->isSuperAdmin() && $resource->engine === 'postgresql')
+<section class="card form-card">
+    <h2>{{ __('resources.credential_vault.heading') }}</h2>
+    <p class="hint">{{ __('resources.credential_vault.notice') }}</p>
+    <form method="POST" action="{{ route('admin.resources.credentials.update', $resource) }}" autocomplete="off">
+        @csrf
+        <div class="form-grid">
+            <div>
+                <label for="vault_username">{{ __('resources.credential_vault.username') }}</label>
+                <input id="vault_username" name="username" type="text" maxlength="128" required autocomplete="off">
+                @error('username') <div class="field-error">{{ $message }}</div> @enderror
+            </div>
+            <div>
+                <label for="vault_password">{{ __('resources.credential_vault.password') }}</label>
+                <input id="vault_password" name="password" type="password" maxlength="4096" required autocomplete="new-password">
+                @error('password') <div class="field-error">{{ $message }}</div> @enderror
+            </div>
+        </div>
+        <div class="submit-row">
+            <button class="button primary" type="submit">{{ __('resources.credential_vault.submit') }}</button>
+        </div>
+    </form>
+</section>
+@endif
+
 @endsection
