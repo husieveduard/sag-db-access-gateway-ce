@@ -4,7 +4,6 @@ import (
  "crypto/tls"
  "errors"
  "fmt"
- "net"
  "time"
 )
 
