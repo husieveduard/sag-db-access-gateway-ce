@@ -52,7 +52,7 @@ func pgBackendAuthenticatePassword(conn net.Conn, password string) error {
   if next!=0||len(payload)!=0{return errors.New("backend authentication was not completed")}
   return nil
  case 10:
-  return errors.New("PostgreSQL SCRAM-SHA-256 backend authentication not yet implemented")
+  return pgBackendSCRAM(conn,data,password)
  default:
   return fmt.Errorf("unsupported PostgreSQL backend authentication code: %d",code)
  }
