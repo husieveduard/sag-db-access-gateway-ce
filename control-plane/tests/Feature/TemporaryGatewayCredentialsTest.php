@@ -15,14 +15,18 @@ class TemporaryGatewayCredentialsTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function makeSession(string $mode = 'temporary'): DbAccessSession
+    private function makeSession(string $mode = 'temporary', string $engine = 'postgresql'): DbAccessSession
     {
         $owner = User::factory()->create();
         $resource = DatabaseResource::query()->create([
             'name' => 'temp-gateway-'.bin2hex(random_bytes(4)),
-            'engine' => 'postgresql',
+            'engine' => $engine,
             'target_host' => 'lab.example',
-            'target_port' => 5432,
+            'target_port' => match ($engine) {
+                'mysql' => 3306,
+                'mssql' => 1433,
+                default => 5432,
+            },
             'target_database' => 'sag_ce_lab',
             'created_by_user_id' => $owner->id,
         ]);
@@ -76,4 +80,16 @@ class TemporaryGatewayCredentialsTest extends TestCase
         $this->expectException(DomainException::class);
         app(TemporaryGatewayCredentials::class)->issue($this->makeSession('persistent'));
     }
+    public function test_temporary_credentials_are_engine_independent(): void
+    {
+        foreach (['postgresql', 'mysql', 'mssql'] as $engine) {
+            $session = $this->makeSession('temporary', $engine);
+            $service = app(TemporaryGatewayCredentials::class);
+            $issued = $service->issue($session);
+            $session->update(['status' => 'started']);
+            $this->assertTrue($service->verify($session->fresh(), $issued['username'], $issued['password']), $engine);
+            $this->assertFalse($service->verify($session->fresh(), $issued['username'], 'incorrect'), $engine);
+        }
+    }
+
 }
