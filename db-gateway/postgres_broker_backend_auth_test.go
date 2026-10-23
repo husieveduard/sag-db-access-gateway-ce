@@ -25,10 +25,10 @@ func TestPgBackendRejectsSCRAMWithoutFallback(t *testing.T) {
  _=server.SetDeadline(time.Now().Add(2*time.Second))
  result:=make(chan error,1)
  go func(){result<-pgBackendAuthenticatePassword(client,"vault-password")}()
- mechanisms:=[]byte("SCRAM-SHA-256\x00\x00")
+ mechanisms:=[]byte("SCRAM-SHA-256-PLUS\x00\x00")
  if _,err:=server.Write(backendAuthFrame(10,mechanisms));err!=nil{t.Fatal(err)}
  err:=<-result
- if err==nil||!strings.Contains(err.Error(),"not yet implemented"){t.Fatalf("SCRAM must fail closed: %v",err)}
+ if err==nil||!strings.Contains(err.Error(),"not offered"){t.Fatalf("unsupported SCRAM mechanism must fail closed: %v",err)}
 }
 func TestPgBackendPasswordAuthOverExistingTransport(t *testing.T) {
  client,server:=net.Pipe();defer client.Close();defer server.Close()
