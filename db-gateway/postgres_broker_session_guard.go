@@ -4,7 +4,6 @@ import (
  "bytes"
  "context"
  "encoding/json"
- "errors"
  "net"
  "net/http"
  "strings"
@@ -60,4 +59,3 @@ func watchBrokerSession(ctx context.Context, client *http.Client, controlURL, to
  }()
  return func(){close(stop);<-done}
 }
-var _=errors.New
