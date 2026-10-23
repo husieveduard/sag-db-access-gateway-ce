@@ -4,17 +4,33 @@ import (
  "crypto/tls"
  "errors"
  "fmt"
+ "net"
+ "strings"
  "time"
 )
 
 // pgBrokerBackendConnect opens an isolated authenticated backend connection.
 // Its caller must obtain the service credential from a trusted vault channel.
 // No temporary client password is ever sent to the target database.
-func pgBrokerBackendConnect(addr string, tlsConfig *tls.Config, username, password, database string) (*tls.Conn, error) {
+func pgBrokerBackendConnect(addr string, tlsConfig *tls.Config, username, password, database string) (net.Conn, error) {
+ return pgBrokerBackendConnectWithMode(addr, "verify-full", tlsConfig, username, password, database)
+}
+
+// Only a deliberately selected backend transport mode may permit plaintext.
+// There is no fallback from verified TLS to plaintext on handshake errors.
+func pgBrokerBackendConnectWithMode(addr, transportMode string, tlsConfig *tls.Config, username, password, database string) (net.Conn, error) {
  if password=="" {return nil,errors.New("backend credential missing")}
  startup,err:=pgBackendStartup(username,database)
  if err!=nil{return nil,err}
- conn,err:=pgBackendTLS(addr,tlsConfig)
+ var conn net.Conn
+ switch strings.ToLower(strings.TrimSpace(transportMode)) {
+ case "verify-full":
+  conn,err=pgBackendTLS(addr,tlsConfig)
+ case "disable":
+  conn,err=net.DialTimeout("tcp",addr,5*time.Second)
+ default:
+  return nil,errors.New("unsupported PostgreSQL backend transport mode")
+ }
  if err!=nil{return nil,err}
  ready:=false
  defer func(){if !ready{_ = conn.Close()}}()
