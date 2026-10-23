@@ -109,4 +109,37 @@ class TemporaryGatewayCredentialsTest extends TestCase
         app(TemporaryGatewayCredentials::class)->issue($session->fresh());
     }
 
+    public function test_internal_verification_requires_token_and_live_session(): void
+    {
+        config()->set('sag.internal_token', 'test-internal-token');
+        $session = $this->makeSession();
+        $credentials = app(TemporaryGatewayCredentials::class)->issue($session);
+        $session->update(['status' => 'started']);
+
+        $payload = [
+            'session_uid' => $session->public_id,
+            'username' => $credentials['username'],
+            'password' => $credentials['password'],
+        ];
+
+        $this->postJson('/api/internal/db/verify-temporary-credential', $payload)
+            ->assertUnauthorized();
+        $this->withHeader('X-SAG-Internal-Token', 'invalid')
+            ->postJson('/api/internal/db/verify-temporary-credential', $payload)
+            ->assertUnauthorized();
+
+        $this->withHeader('X-SAG-Internal-Token', 'test-internal-token')
+            ->postJson('/api/internal/db/verify-temporary-credential', $payload)
+            ->assertOk()->assertJson(['ok' => true, 'allowed' => true])
+            ->assertDontSee($credentials['password']);
+
+        $this->postJson('/api/internal/db/verify-temporary-credential',
+            array_merge($payload, ['password' => 'invalid']))
+            ->assertOk()->assertJson(['allowed' => false]);
+
+        $session->update(['status' => 'terminated']);
+        $this->postJson('/api/internal/db/verify-temporary-credential', $payload)
+            ->assertOk()->assertJson(['allowed' => false]);
+    }
+
 }
