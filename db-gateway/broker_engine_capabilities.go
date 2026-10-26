@@ -13,6 +13,7 @@ const (
  BrokerPostgreSQL BrokerEngine = "postgresql"
  BrokerMySQL BrokerEngine = "mysql"
  BrokerMSSQL BrokerEngine = "mssql"
+ BrokerOracle BrokerEngine = "oracle"
 )
 
 var errUnknownBrokerEngine = errors.New("unknown database engine")
@@ -23,6 +24,7 @@ func normalizeBrokerEngine(value string) (BrokerEngine,error) {
  case "postgresql","postgres": return BrokerPostgreSQL,nil
  case "mysql","mariadb": return BrokerMySQL,nil
  case "mssql","sqlserver": return BrokerMSSQL,nil
+ case "oracle","oracledb": return BrokerOracle,nil
  default:return "",errUnknownBrokerEngine
  }
 }
