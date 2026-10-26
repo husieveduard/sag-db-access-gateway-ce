@@ -10,6 +10,7 @@ func TestBrokerEngineIdentityAndCapability(t *testing.T) {
   {"MariaDB",BrokerMySQL,false},
   {"mssql",BrokerMSSQL,false},
   {"SQLServer",BrokerMSSQL,false},
+  {"OracleDB",BrokerOracle,false},
  }
  for _,tc:=range cases{
   engine,err:=normalizeBrokerEngine(tc.input)
@@ -17,6 +18,6 @@ func TestBrokerEngineIdentityAndCapability(t *testing.T) {
   _,err=requireImplementedTemporaryBroker(tc.input)
   if (err==nil)!=tc.implemented{t.Fatalf("%q unexpected implementation availability: %v",tc.input,err)}
  }
- if _,err:=normalizeBrokerEngine("oracle");err==nil{t.Fatal("unknown engine accepted")}
+ if _,err:=normalizeBrokerEngine("unknown_db");err==nil{t.Fatal("unknown engine accepted")}
  if _,err:=requireImplementedTemporaryBroker("oracle");err==nil{t.Fatal("unsupported broker accepted")}
 }
