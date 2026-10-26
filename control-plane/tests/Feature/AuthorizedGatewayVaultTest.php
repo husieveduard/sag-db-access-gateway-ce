@@ -16,7 +16,7 @@ final class AuthorizedGatewayVaultTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function session(): DbAccessSession
+    private function makeVaultSession(): DbAccessSession
     {
         $user = User::factory()->create();
         $resource = DatabaseResource::query()->create([
@@ -40,7 +40,7 @@ final class AuthorizedGatewayVaultTest extends TestCase
 
     public function test_active_session_is_bound_to_its_resource(): void
     {
-        $session = $this->session();
+        $session = $this->makeVaultSession();
         $vault = Mockery::mock(ResourceCredentialVault::class);
         $vault->shouldReceive('retrieveForGateway')->once()
             ->with($session->resource_id)
@@ -52,7 +52,7 @@ final class AuthorizedGatewayVaultTest extends TestCase
     public function test_revoked_expired_or_inactive_resource_denies_before_decryption(): void
     {
         foreach (['terminated', 'expired', 'created', 'persistent', 'resource_inactive'] as $case) {
-            $session = $this->session();
+            $session = $this->makeVaultSession();
             if ($case === 'expired') {
                 $session->update(['expires_at' => now()->subMinute()]);
             } elseif ($case === 'persistent') {
