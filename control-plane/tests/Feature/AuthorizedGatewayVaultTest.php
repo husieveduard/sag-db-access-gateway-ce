@@ -25,7 +25,7 @@ final class AuthorizedGatewayVaultTest extends TestCase
     {
         $user = User::factory()->create();
         $resource = DatabaseResource::query()->create([
-            'name' => 'Vault boundary test',
+            'name' => 'Vault boundary test '.bin2hex(random_bytes(8)),
             'engine' => 'postgresql',
             'target_host' => 'db.example',
             'target_port' => 5432,
