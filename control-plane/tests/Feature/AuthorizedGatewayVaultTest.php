@@ -9,12 +9,17 @@ use App\Services\Credentials\AuthorizedGatewayVault;
 use App\Services\Credentials\ResourceCredentialVault;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Mockery;
 use Tests\TestCase;
 
 final class AuthorizedGatewayVaultTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        config()->set('sag_credentials.encryption_key', 'base64:'.base64_encode(random_bytes(32)));
+    }
 
     private function makeVaultSession(): DbAccessSession
     {
@@ -41,12 +46,11 @@ final class AuthorizedGatewayVaultTest extends TestCase
     public function test_active_session_is_bound_to_its_resource(): void
     {
         $session = $this->makeVaultSession();
-        $vault = Mockery::mock(ResourceCredentialVault::class);
-        $vault->shouldReceive('retrieveForGateway')->once()
-            ->with($session->resource_id)
-            ->andReturn(['username' => 'gateway_service', 'password' => 'protected-secret']);
-        $this->assertSame('gateway_service', app(AuthorizedGatewayVault::class)
-            ->forActiveSession($session->public_id, $vault)['username']);
+        $vault = app(ResourceCredentialVault::class);
+        $vault->replace((int) $session->resource_id, 'gateway_service', 'protected-secret', (int) $session->owner_user_id);
+        $credentials = app(AuthorizedGatewayVault::class)->forActiveSession($session->public_id, $vault);
+        $this->assertSame('gateway_service', $credentials['username']);
+        $this->assertSame('protected-secret', $credentials['password']);
     }
 
     public function test_revoked_expired_or_inactive_resource_denies_before_decryption(): void
@@ -62,8 +66,7 @@ final class AuthorizedGatewayVaultTest extends TestCase
             } else {
                 $session->update(['status' => $case]);
             }
-            $vault = Mockery::mock(ResourceCredentialVault::class);
-            $vault->shouldNotReceive('retrieveForGateway');
+            $vault = app(ResourceCredentialVault::class);
             try {
                 app(AuthorizedGatewayVault::class)->forActiveSession($session->public_id, $vault);
                 $this->fail('Unauthorized session accepted: '.$case);
@@ -75,8 +78,7 @@ final class AuthorizedGatewayVaultTest extends TestCase
 
     public function test_missing_session_does_not_access_vault(): void
     {
-        $vault = Mockery::mock(ResourceCredentialVault::class);
-        $vault->shouldNotReceive('retrieveForGateway');
+        $vault = app(ResourceCredentialVault::class);
         $this->expectException(DomainException::class);
         app(AuthorizedGatewayVault::class)->forActiveSession('nonexistent', $vault);
     }
