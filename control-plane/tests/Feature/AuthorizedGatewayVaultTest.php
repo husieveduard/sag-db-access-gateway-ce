@@ -76,6 +76,28 @@ final class AuthorizedGatewayVaultTest extends TestCase
         }
     }
 
+    public function test_ipc_probe_requires_exact_live_session_and_resource(): void
+    {
+        $session = $this->makeVaultSession();
+        $service = app(AuthorizedGatewayVault::class);
+        $this->assertTrue($service->isActiveSessionResource($session->public_id, (int) $session->resource_id));
+        $this->assertFalse($service->isActiveSessionResource($session->public_id, (int) $session->resource_id + 1));
+        $this->assertFalse($service->isActiveSessionResource('invalid', (int) $session->resource_id));
+        $session->update(['status' => 'terminated']);
+        $this->assertFalse($service->isActiveSessionResource($session->public_id, (int) $session->resource_id));
+    }
+
+    public function test_ipc_probe_denies_expired_or_inactive_resource(): void
+    {
+        $session = $this->makeVaultSession();
+        $service = app(AuthorizedGatewayVault::class);
+        $session->update(['expires_at' => now()->subMinute()]);
+        $this->assertFalse($service->isActiveSessionResource($session->public_id, (int) $session->resource_id));
+        $session->update(['expires_at' => now()->addHour()]);
+        $session->resource->update(['is_active' => false]);
+        $this->assertFalse($service->isActiveSessionResource($session->public_id, (int) $session->resource_id));
+    }
+
     public function test_missing_session_does_not_access_vault(): void
     {
         $vault = app(ResourceCredentialVault::class);
