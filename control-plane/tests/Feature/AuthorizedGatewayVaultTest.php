@@ -98,6 +98,24 @@ final class AuthorizedGatewayVaultTest extends TestCase
         $this->assertFalse($service->isActiveSessionResource($session->public_id, (int) $session->resource_id));
     }
 
+    public function test_local_ipc_command_checks_real_session_binding(): void
+    {
+        $session = $this->makeVaultSession();
+        $this->artisan('sag:verify-gateway-ipc-session', [
+            'session_uid' => $session->public_id,
+            'resource_id' => (string) $session->resource_id,
+        ])->expectsOutput('ALLOW')->assertExitCode(0);
+        $this->artisan('sag:verify-gateway-ipc-session', [
+            'session_uid' => $session->public_id,
+            'resource_id' => (string) ($session->resource_id + 1),
+        ])->expectsOutput('DENY')->assertExitCode(1);
+        $session->update(['status' => 'terminated']);
+        $this->artisan('sag:verify-gateway-ipc-session', [
+            'session_uid' => $session->public_id,
+            'resource_id' => (string) $session->resource_id,
+        ])->expectsOutput('DENY')->assertExitCode(1);
+    }
+
     public function test_missing_session_does_not_access_vault(): void
     {
         $vault = app(ResourceCredentialVault::class);
