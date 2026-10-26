@@ -8,6 +8,27 @@ use DomainException;
 final class AuthorizedGatewayVault
 {
     /**
+     * Non-secret authorization for a specific IPC session/resource pair.
+     * The caller must authenticate the IPC peer independently.
+     */
+    public function isActiveSessionResource(string $sessionUid, int $resourceId): bool
+    {
+        if ($sessionUid === '' || $resourceId < 1) {
+            return false;
+        }
+        $session = DbAccessSession::query()->with('resource')
+            ->where('public_id', $sessionUid)
+            ->where('resource_id', $resourceId)
+            ->first();
+        return $session !== null
+            && $session->mode === 'temporary'
+            && $session->status === 'started'
+            && $session->expires_at !== null
+            && $session->expires_at->isFuture()
+            && $session->resource?->is_active === true;
+    }
+
+    /**
      * Resolve backend credentials only after checking the active session and
      * the resource bound to that session. Never expose this method in routes.
      *
