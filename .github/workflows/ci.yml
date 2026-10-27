@@ -155,6 +155,19 @@ jobs:
         working-directory: db-gateway
         run: go test ./...
 
+      - name: Compile isolated IPC lab worker and probe
+        working-directory: db-gateway
+        run: |
+          go build -o /tmp/sag-ipc-worker-ci \
+            ipc_worker_lab_main.go \
+            postgres_session_ipc_server_linux.go \
+            postgres_session_ipc_laravel_linux.go
+          go build -o /tmp/sag-ipc-probe-ci \
+            ipc_probe_lab_main.go \
+            postgres_session_ipc_probe.go
+          test -x /tmp/sag-ipc-worker-ci
+          test -x /tmp/sag-ipc-probe-ci
+
   docker:
     name: Docker build
     needs:
