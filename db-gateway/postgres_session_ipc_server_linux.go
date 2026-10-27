@@ -4,6 +4,7 @@ import (
  "context"
  "encoding/json"
  "errors"
+ "io"
  "net"
  "os"
  "syscall"
@@ -48,12 +49,15 @@ func pgIPCHandleAuthorization(ctx context.Context, conn net.Conn, trustedUID uin
   authenticated=e==nil && cred.Uid==trustedUID
  });err!=nil || !authenticated{return}
  if conn.SetDeadline(time.Now().Add(3*time.Second))!=nil{return}
- decoder:=json.NewDecoder(conn)
+ decoder:=json.NewDecoder(io.LimitReader(conn,1025))
  var request struct {
   SessionUID string `json:"session_uid"`
   ResourceID int64 `json:"resource_id"`
  }
  if decoder.Decode(&request)!=nil || len(request.SessionUID)==0 || len(request.SessionUID)>128 || request.ResourceID<=0{return}
+ // Reject concatenated JSON requests instead of silently authorizing the first.
+ var extra any
+ if decoder.Decode(&extra)!=io.EOF{return}
  allowed:=ctx.Err()==nil && authorize(ctx,request.SessionUID,request.ResourceID)
  _=json.NewEncoder(conn).Encode(struct {
   Allowed bool `json:"allowed"`
