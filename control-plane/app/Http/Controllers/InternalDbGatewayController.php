@@ -51,6 +51,16 @@ class InternalDbGatewayController extends Controller
         }
 
         $resource = $session->resource;
+
+        // A disabled resource cannot become reachable through a late or
+        // replayed gateway callback, regardless of its session status.
+        if ($resource === null || ! $resource->is_active) {
+            return response()->json([
+                'ok' => false,
+                'error' => 'resource_inactive',
+            ], 409);
+        }
+
         $engine = $this->normalizeEngine($data['db_engine']);
 
         if ($engine !== $this->normalizeEngine($resource->engine)) {
