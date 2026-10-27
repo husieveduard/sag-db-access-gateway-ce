@@ -143,7 +143,7 @@ class ResourceController extends Controller
         return view('admin.resources.edit', [
             'resource' => $resource,
             'engines' => self::ENGINES,
-            'vaultCredential' => auth()->user()->isSuperAdmin() && $resource->engine === 'postgresql'
+            'vaultCredential' => auth()->user()->isSuperAdmin() && in_array($resource->engine, ['postgresql', 'mysql', 'mariadb', 'mssql'], true)
                 ? DatabaseResourceCredential::query()->where('resource_id', $resource->id)->first(['username', 'updated_at'])
                 : null,
         ]);
