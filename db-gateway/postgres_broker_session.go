@@ -63,7 +63,7 @@ func pgBrokerServeAuthenticatedSession(
   binary.BigEndian.PutUint32(frame[1:5],uint32(4+len(payload)))
   copy(frame[5:],payload)
   _=backend.SetDeadline(time.Now().Add(30*time.Second))
-  if _,err=backend.Write(frame);err!=nil{return err}
+  if _,err=io.Copy(backend,bytesReader(frame));err!=nil{return err}
   for n:=0;n<100000;n++{
    backendKind,_,rawMessage,backendErr:=readPgMessage(backend)
    if backendErr!=nil{return backendErr}
