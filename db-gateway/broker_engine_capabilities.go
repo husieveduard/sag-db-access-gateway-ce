@@ -42,7 +42,7 @@ func brokerCapability(value string) (BrokerCapability, error) {
     if err != nil { return BrokerCapability{}, err }
     switch engine {
     case BrokerPostgreSQL:
-        return BrokerCapability{Engine: engine, Passthrough: true, TemporaryBroker: true, SQLAudit: true}, nil
+        return BrokerCapability{Engine: engine, Passthrough: true, SQLAudit: true}, nil
     case BrokerMySQL:
         return BrokerCapability{Engine: engine, Passthrough: true}, nil
     case BrokerMSSQL:
@@ -54,6 +54,8 @@ func brokerCapability(value string) (BrokerCapability, error) {
     }
 }
 
+// TemporaryBroker remains disabled for every engine until the native broker,
+// vault transport, and lifecycle are integrated and verified.
 // This gate must only change when the native protocol implementation and
 // secret transport have regression coverage. Never route unsupported
 // temporary credentials into client passthrough.
