@@ -42,7 +42,7 @@ class InternalDbGatewayController extends Controller
             ], 410);
         }
 
-        if (!in_array($session->status, ['created', 'starting', 'started'], true)) {
+        if (!in_array($session->status, ['starting', 'started'], true)) {
             return response()->json([
                 'ok' => false,
                 'error' => 'session_not_allowed',
