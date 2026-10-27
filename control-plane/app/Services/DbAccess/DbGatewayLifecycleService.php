@@ -19,6 +19,14 @@ class DbGatewayLifecycleService
         $this->assertStartable($session);
 
         $resource = $session->resource;
+        // Managed authentication must never downgrade to client passthrough.
+        // Enable it only after the native temporary-credential broker is
+        // integrated for this engine and has passed end-to-end tests.
+        if ($resource->auth_mode !== 'client_passthrough') {
+            throw new RuntimeException(
+                'Managed DB authentication requires an implemented broker; refusing passthrough fallback.'
+            );
+        }
         $binary = trim((string) config('sag.db_gateway.binary'));
         $listenHost = trim((string) config('sag.db_gateway.listen_host', '0.0.0.0'));
         $publicHost = trim((string) config('sag.db_gateway.public_host', ''));
