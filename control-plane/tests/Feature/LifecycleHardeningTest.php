@@ -51,6 +51,24 @@ class LifecycleHardeningTest extends TestCase
         };
     }
 
+    public function test_connection_started_callback_cannot_activate_created_session(): void
+    {
+        config()->set('sag.internal_token', 'test-internal-token');
+        $session = $this->makeGatewaySession('created');
+
+        $this->withHeader('X-SAG-Internal-Token', 'test-internal-token')
+            ->postJson('/api/internal/db/connection-started', [
+                'session_uid' => $session->public_id,
+                'connection_uid' => 'CONN-UNSTARTED-TEST',
+                'db_engine' => 'postgresql',
+            ])->assertStatus(409)->assertJsonPath('error', 'session_not_allowed');
+
+        $this->assertSame('created', $session->fresh()->status);
+        $this->assertDatabaseMissing('db_connections', [
+            'public_id' => 'CONN-UNSTARTED-TEST',
+        ]);
+    }
+
     public function test_failed_termination_keeps_nonterminal_state_and_preserves_open_activity(): void
     {
         $session = $this->makeGatewaySession();
