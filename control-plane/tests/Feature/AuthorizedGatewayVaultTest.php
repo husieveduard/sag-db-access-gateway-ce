@@ -53,6 +53,28 @@ final class AuthorizedGatewayVaultTest extends TestCase
         $this->assertSame('protected-secret', $credentials['password']);
     }
 
+    public function test_bound_vault_access_rejects_wrong_resource_and_revocation(): void
+    {
+        $session = $this->makeVaultSession();
+        $vault = app(ResourceCredentialVault::class);
+        $vault->replace((int) $session->resource_id, 'broker_user', 'vault-fixture', (int) $session->owner_user_id);
+        $authorization = app(AuthorizedGatewayVault::class);
+
+        $credentials = $authorization->forBoundActiveSession($session->public_id, (int) $session->resource_id, $vault);
+        $this->assertSame('broker_user', $credentials['username']);
+
+        try {
+            $authorization->forBoundActiveSession($session->public_id, (int) $session->resource_id + 1, $vault);
+            $this->fail('Wrong resource was authorized.');
+        } catch (DomainException $exception) {
+            $this->assertSame('Gateway session is not authorized.', $exception->getMessage());
+        }
+
+        $session->update(['status' => 'terminated']);
+        $this->expectException(DomainException::class);
+        $authorization->forBoundActiveSession($session->public_id, (int) $session->resource_id, $vault);
+    }
+
     public function test_revoked_expired_or_inactive_resource_denies_before_decryption(): void
     {
         foreach (['terminated', 'expired', 'created', 'persistent', 'resource_inactive'] as $case) {
