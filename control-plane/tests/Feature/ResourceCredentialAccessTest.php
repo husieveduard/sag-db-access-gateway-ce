@@ -116,6 +116,44 @@ class ResourceCredentialAccessTest extends TestCase
         $this->assertDatabaseCount('database_resource_credentials', 1);
     }
 
+    public function test_vault_credentials_are_isolated_across_mysql_mariadb_and_mssql(): void
+    {
+        $admin = $this->signIn('superadmin');
+        $vault = app(ResourceCredentialVault::class);
+        $resources = [];
+
+        foreach (['mysql', 'mariadb', 'mssql'] as $engine) {
+            $resource = $this->resource($admin, $engine);
+            $resources[$engine] = $resource;
+
+            $this->post(route('admin.resources.credentials.update', $resource), [
+                'username' => 'backend_'.$engine,
+                'password' => 'fixture-'.$engine,
+            ])->assertRedirect(route('admin.resources.edit', $resource));
+
+            $stored = DatabaseResourceCredential::query()
+                ->where('resource_id', $resource->id)->firstOrFail();
+
+            $this->assertNotSame('fixture-'.$engine, $stored->password_encrypted);
+            $this->assertSame('backend_'.$engine, $vault->retrieveForGateway($resource->id)['username']);
+            $this->assertSame('fixture-'.$engine, $vault->retrieveForGateway($resource->id)['password']);
+            $this->get(route('admin.resources.edit', $resource))
+                ->assertOk()->assertSee('vault_password')->assertDontSee('fixture-'.$engine);
+        }
+
+        $this->assertDatabaseCount('database_resource_credentials', 3);
+
+        $this->post(route('admin.resources.credentials.update', $resources['mysql']), [
+            'username' => 'backend_mysql',
+            'password' => 'rotated-mysql-fixture',
+        ])->assertRedirect();
+
+        $this->assertSame('rotated-mysql-fixture', $vault->retrieveForGateway($resources['mysql']->id)['password']);
+        $this->assertSame('fixture-mariadb', $vault->retrieveForGateway($resources['mariadb']->id)['password']);
+        $this->assertSame('fixture-mssql', $vault->retrieveForGateway($resources['mssql']->id)['password']);
+        $this->assertDatabaseCount('database_resource_credentials', 3);
+    }
+
     public function test_password_validation_does_not_persist_empty_credentials(): void
     {
         $admin = $this->signIn('superadmin');
