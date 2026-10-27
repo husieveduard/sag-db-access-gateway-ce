@@ -173,7 +173,7 @@
     </div>
 </form>
 
-@if (auth()->user()->isSuperAdmin() && $resource->engine === 'postgresql')
+@if (auth()->user()->isSuperAdmin() && in_array($resource->engine, ['postgresql', 'mysql', 'mariadb', 'mssql'], true))
 <section class="card form-card">
     <h2>{{ __('resources.credential_vault.heading') }}</h2>
     <p class="hint">{{ __('resources.credential_vault.notice') }}</p>
