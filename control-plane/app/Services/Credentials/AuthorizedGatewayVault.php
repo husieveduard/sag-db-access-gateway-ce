@@ -29,6 +29,47 @@ final class AuthorizedGatewayVault
     }
 
     /**
+     * Bound credential lookup for a trusted local IPC worker.
+     * The worker must independently authenticate its Unix peer.
+     *
+     * @return array{username:string,password:string}
+     */
+    public function forBoundActiveSession(
+        string $sessionUid,
+        int $resourceId,
+        ResourceCredentialVault $vault,
+    ): array {
+        if (! $this->isActiveSessionResource($sessionUid, $resourceId)) {
+            throw new DomainException('Gateway session is not authorized.');
+        }
+
+        // Revalidate the session at secret retrieval; never trust a previous
+        // IPC allow response as an indefinite authorization grant.
+        $session = DbAccessSession::query()->with('resource')
+            ->where('public_id', $sessionUid)
+            ->where('resource_id', $resourceId)
+            ->first();
+
+        if ($session === null
+            || $session->mode !== 'temporary'
+            || $session->status !== 'started'
+            || $session->expires_at === null
+            || $session->expires_at->isPast()
+            || ! $session->resource?->is_active) {
+            throw new DomainException('Gateway session is not authorized.');
+        }
+
+        $credentials = $vault->retrieveForGateway($resourceId);
+        if ($credentials === null
+            || $credentials['username'] === ''
+            || $credentials['password'] === '') {
+            throw new DomainException('Backend credentials are unavailable.');
+        }
+
+        return $credentials;
+    }
+
+    /**
      * Resolve backend credentials only after checking the active session and
      * the resource bound to that session. Never expose this method in routes.
      *
