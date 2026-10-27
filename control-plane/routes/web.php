@@ -5,6 +5,7 @@ use App\Http\Controllers\Admin\OperationController;
 use App\Http\Controllers\Admin\ResourceController;
 use App\Http\Controllers\Admin\ResourceCredentialController;
 use App\Http\Controllers\Admin\SessionController;
+use App\Http\Controllers\Admin\IssueTemporaryCredentialController;
 use App\Http\Controllers\Admin\AdministratorController;
 use App\Http\Controllers\Admin\AuditController;
 use App\Http\Controllers\Admin\AlertController;
@@ -145,6 +146,9 @@ Route::middleware(['auth', 'ce.admin', 'ce.mfa'])
 
         Route::get('/sessions', [SessionController::class, 'index'])
             ->name('sessions.index');
+
+        Route::post('/sessions/{session}/temporary-credentials', IssueTemporaryCredentialController::class)
+            ->middleware('throttle:3,1')->name('sessions.temporary-credentials');
 
         Route::get('/sessions/{session}', [SessionController::class, 'show'])
             ->name('sessions.show');
