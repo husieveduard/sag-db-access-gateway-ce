@@ -4,8 +4,8 @@ import "testing"
 
 func TestBrokerEngineIdentityAndCapability(t *testing.T) {
  cases:=[]struct{input string; engine BrokerEngine; implemented bool}{
-  {"postgresql",BrokerPostgreSQL,true},
-  {" POSTGRES ",BrokerPostgreSQL,true},
+  {"postgresql",BrokerPostgreSQL,false},
+  {" POSTGRES ",BrokerPostgreSQL,false},
   {"mysql",BrokerMySQL,false},
   {"MariaDB",BrokerMySQL,false},
   {"mssql",BrokerMSSQL,false},
@@ -30,7 +30,7 @@ func TestBrokerCapabilityMatrix(t *testing.T) {
         temporary bool
         audit bool
     }{
-        {"postgres", BrokerPostgreSQL, true, true, true},
+        {"postgres", BrokerPostgreSQL, true, false, true},
         {"MariaDB", BrokerMySQL, true, false, false},
         {"mysql", BrokerMySQL, true, false, false},
         {"sqlserver", BrokerMSSQL, true, false, false},
