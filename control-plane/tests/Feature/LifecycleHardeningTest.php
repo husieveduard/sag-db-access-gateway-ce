@@ -88,6 +88,16 @@ class LifecycleHardeningTest extends TestCase
         ]);
     }
 
+    public function test_managed_auth_cannot_fall_back_to_passthrough(): void
+    {
+        $session = $this->makeGatewaySession('created');
+        $session->resource->forceFill(['auth_mode' => 'managed'])->save();
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('refusing passthrough fallback');
+        (new DbGatewayLifecycleService())->start($session);
+    }
+
     public function test_failed_termination_keeps_nonterminal_state_and_preserves_open_activity(): void
     {
         $session = $this->makeGatewaySession();
