@@ -106,14 +106,14 @@ class ResourceCredentialAccessTest extends TestCase
         $this->assertDatabaseCount('database_resource_credentials', 0);
     }
 
-    public function test_mysql_resource_is_not_enabled_yet(): void
+    public function test_mysql_resource_vault_is_enabled(): void
     {
         $admin = $this->signIn('superadmin');
         $resource = $this->resource($admin, 'mysql');
         $this->post(route('admin.resources.credentials.update', $resource), [
             'username' => 'test', 'password' => 'should-not-save',
-        ])->assertStatus(422);
-        $this->assertDatabaseCount('database_resource_credentials', 0);
+        ])->assertRedirect();
+        $this->assertDatabaseCount('database_resource_credentials', 1);
     }
 
     public function test_password_validation_does_not_persist_empty_credentials(): void
