@@ -99,6 +99,47 @@ final class AuthorizedGatewayVault
     }
 
     /**
+     * Single atomic starting-session grant for a locally authenticated
+     * gateway process. Never expose this entry point to an HTTP controller.
+     * The caller must verify SO_PEERCRED and /proc start ticks independently.
+     *
+     * @return array{username:string,password:string}
+     */
+    public function takeBootstrapCredentials(
+        string $sessionUid, int $resourceId, int $peerPid,
+        string $peerStartTicks, ResourceCredentialVault $vault,
+    ): array {
+        return DB::transaction(function () use ($sessionUid, $resourceId, $peerPid, $peerStartTicks, $vault): array {
+            $session = DbAccessSession::query()
+                ->where('public_id', $sessionUid)
+                ->where('resource_id', $resourceId)
+                ->lockForUpdate()->first();
+
+            if ($session === null
+                || data_get($session->metadata, 'db.bootstrap_consumed_at') !== null
+                || ! $this->isStartingSessionBoundToProcess(
+                    $sessionUid, $resourceId, $peerPid, $peerStartTicks
+                )) {
+                throw new DomainException('Gateway bootstrap is not authorized.');
+            }
+
+            $credentials = $vault->retrieveForGateway($resourceId);
+            if ($credentials === null || $credentials['username'] === ''
+                || $credentials['password'] === '') {
+                throw new DomainException('Backend credentials are unavailable.');
+            }
+
+            $metadata = is_array($session->metadata) ? $session->metadata : [];
+            $db = is_array($metadata['db'] ?? null) ? $metadata['db'] : [];
+            $db['bootstrap_consumed_at'] = now()->toIso8601String();
+            $metadata['db'] = $db;
+            $session->forceFill(['metadata' => $metadata])->save();
+
+            return $credentials;
+        }, 3);
+    }
+
+    /**
      * Bound credential lookup for a trusted local IPC worker.
      * The worker must independently authenticate its Unix peer.
      *
