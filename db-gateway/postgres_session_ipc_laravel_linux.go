@@ -23,7 +23,11 @@ func pgIPCLaravelAuthorizer(phpBinary, artisanPath string) pgIPCSessionAuthorize
   }
   checkCtx,cancel:=context.WithTimeout(ctx,2*time.Second)
   defer cancel()
-  cmd:=exec.CommandContext(checkCtx,phpBinary,artisanPath,"sag:verify-gateway-ipc-session",sessionUID,strconv.FormatInt(resourceID,10),"--no-ansi","--no-interaction")
+  args:=[]string{artisanPath,"sag:verify-gateway-ipc-session",sessionUID,strconv.FormatInt(resourceID,10),"--no-ansi","--no-interaction"}
+  if peer,ok:=ctx.Value(pgIPCPeerIdentityKey{}).(pgIPCPeerIdentity);ok && peer.PID>1 && peer.StartTicks!="" {
+   args=append(args,"--peer-pid="+strconv.FormatInt(int64(peer.PID),10),"--peer-start-ticks="+peer.StartTicks)
+  }
+  cmd:=exec.CommandContext(checkCtx,phpBinary,args...)
   output,err:=cmd.Output()
   if err!=nil || checkCtx.Err()!=nil || len(output)>128{return false}
   return strings.TrimSpace(string(output))=="ALLOW"
