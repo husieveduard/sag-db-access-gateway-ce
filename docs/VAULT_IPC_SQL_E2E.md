@@ -21,9 +21,10 @@ command lifetime, and returns only generic failures. This trusts the local worke
 and its OS account; untrusted users must not share that account or its Laravel DB
 credentials/encryption key. No HTTP route returns backend credentials.
 
-The supervisor must record the actual broker PID/start ticks in a `starting`
-session before bootstrap, then activate the session before accepting client
-queries. Credentials stay in broker memory for that session. The broker requires
+The automatic laboratory launcher records the actual broker PID/start ticks in
+starting, releases the private start barrier, waits for native backend
+authentication/readiness, saves started and releases activation. It refuses
+production environments. See [engine status and launch configuration](MANAGED_BROKER_ENGINE_STATUS.md). Credentials stay in broker memory for that session. The broker requires
 a live local authorization callback, checked before client startup, after backend
 authentication, before each query and by the periodic guard. The post-backend,
 per-query and periodic checks also retain independent HTTP authorization. The worker revalidates the original PID/start ticks, consumed bootstrap,
@@ -40,9 +41,12 @@ Use a disposable PostgreSQL 16 database named `sag_e2e`, with an administrative
 `postgres` login and SCRAM host authentication. Never point the test at an
 existing database: it creates and drops the dedicated `ipc_e2e_backend` role.
 Install control-plane Composer dependencies, copy `.env.example` to ignored `.env`,
-and make PHP with SQLite available on PATH. From `db-gateway` run:
+and make PHP with SQLite available on PATH. Build the native lab runner and run
+all SQL and managed-launch cases from `db-gateway`:
 
 ```sh
+../scripts/build-postgres-lab-broker.sh /tmp/sag-lab-broker
+SAG_E2E_BROKER_BINARY=/tmp/sag-lab-broker \
 SAG_E2E_POSTGRES=127.0.0.1:5432 \
 SAG_E2E_ADMIN_PASSWORD=isolated_e2e_admin_only \
 go test -v -run '^TestLaravelVaultIPCPostgresSQL$' -count=1 ./...
@@ -68,7 +72,7 @@ for the test container because the IPC gate rejects PID 1. CI runs this test in
 ## Local validation, 2026-10-28
 
 - Go 1.22 suite passed; worker, broker and gateway builds passed.
-- Laravel feature suite: 110 passed, 512 assertions. The separately gated real
+- Laravel feature suite: 113 passed, 528 assertions. The separately gated real
   Linux gateway lifecycle test also passed (1 test, 8 assertions).
 - PostgreSQL 16 on an internal Docker network, without published ports:
   `SELECT 1 = 1`; incorrect backend password, wrong resource, unrelated process
@@ -76,3 +80,13 @@ for the test container because the IPC gate rejects PID 1. CI runs this test in
   after all six invalidation scenarios, with no unauthorized INSERT reaching PostgreSQL. The test uses verified frontend TLS and isolated
   SCRAM backend authentication with explicitly disabled backend TLS in the lab.
 - Repository preflight and whitespace checks passed.
+
+Managed-launch coverage additionally starts the actual broker as a separate
+process through Laravel, checks process identity and a scrubbed environment,
+executes SELECT 1 and performs identity-checked termination. An incorrect Vault
+password leaves failed with no child/listener/backend connection; a revoke after
+bootstrap but before activation leaves terminated, never started. Inherited
+control-plane descriptors are removed by same-PID re-exec before bootstrap, so
+PHP command completion is independent of the long-lived child. Both broker and
+HTTP logs are checked for backend-secret disclosure. All nine scenarios run in
+the dedicated CI job; absent SAG_E2E_BROKER_BINARY skips the three launch cases.

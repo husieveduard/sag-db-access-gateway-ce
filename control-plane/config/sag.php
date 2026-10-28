@@ -26,6 +26,15 @@ return [
     ],
 
     'db_gateway' => [
+        // Explicit development/test opt-in. Production always refuses this path.
+        'managed_lab' => [
+            'enabled' => filter_var(env('SAG_LAB_MANAGED_BROKER_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+            'postgresql_binary' => env('SAG_LAB_POSTGRES_BROKER_BINARY', ''),
+            'socket' => env('SAG_LAB_VAULT_SOCKET', ''),
+            'worker_uid' => env('SAG_LAB_WORKER_UID'),
+            'cert' => env('SAG_LAB_BROKER_CERT', ''),
+            'key' => env('SAG_LAB_BROKER_KEY', ''),
+        ],
         'binary' => env('SAG_DB_GATEWAY_BINARY', '/usr/local/bin/sag-db-gateway'),
         'control_plane_url' => env('SAG_GATEWAY_CONTROL_PLANE_URL', 'http://nginx'),
         'log_dir' => env('SAG_DB_GATEWAY_LOG_DIR', '/var/lib/sag/db-gateway/logs'),

@@ -10,6 +10,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"io"
 	"net"
 	"net/http"
@@ -25,15 +26,20 @@ import (
 // Requires an isolated PostgreSQL with admin password from test-only env,
 // PHP with SQLite and installed Laravel dependencies. Never points at production.
 func TestLaravelVaultIPCPostgresSQL(t *testing.T) {
-	for _, scenario := range []string{"revoke", "expire", "deactivate", "replace_pid", "replace_ticks", "worker_lost"} {
+	for _, scenario := range []string{"revoke", "expire", "deactivate", "replace_pid", "replace_ticks", "worker_lost", "managed_start", "managed_bad_secret", "managed_revoke_start"} {
 		t.Run(scenario, func(t *testing.T) { postgresVaultSQLScenario(t, scenario) })
 	}
 }
 
 func postgresVaultSQLScenario(t *testing.T, scenario string) {
+	managed := strings.HasPrefix(scenario, "managed_")
 	target := os.Getenv("SAG_E2E_POSTGRES")
 	if target == "" {
 		t.Skip("set SAG_E2E_POSTGRES for isolated PostgreSQL E2E")
+	}
+	managedBinary := os.Getenv("SAG_E2E_BROKER_BINARY")
+	if managed && managedBinary == "" {
+		t.Skip("set SAG_E2E_BROKER_BINARY for real managed launcher E2E")
 	}
 	php := os.Getenv("SAG_E2E_PHP")
 	if php == "" {
@@ -100,7 +106,10 @@ func postgresVaultSQLScenario(t *testing.T, scenario string) {
 	fixture := func(input map[string]any) []byte {
 		t.Helper()
 		data, _ := json.Marshal(input)
-		cmd := exec.Command(php, filepath.Join(root, "tests/Fixtures/gateway-vault-e2e.php"))
+		fixtureCtx, fixtureCancel := context.WithTimeout(context.Background(), 35*time.Second)
+		defer fixtureCancel()
+		cmd := exec.CommandContext(fixtureCtx, php, filepath.Join(root, "tests/Fixtures/gateway-vault-e2e.php"))
+		cmd.WaitDelay = 2 * time.Second
 		cmd.Env = env
 		cmd.Stdin = bytes.NewReader(data)
 		out, e := cmd.Output()
@@ -120,7 +129,13 @@ func postgresVaultSQLScenario(t *testing.T, scenario string) {
 			Password string `json:"password"`
 		} `json:"temporary"`
 	}
-	if json.Unmarshal(fixture(map[string]any{"action": "setup", "password": password, "pid": os.Getpid(), "ticks": ticks}), &setup) != nil {
+	vaultPassword := password
+	if scenario == "managed_bad_secret" {
+		vaultPassword = "incorrect-vault-fixture"
+	}
+	targetHost, targetPort, _ := net.SplitHostPort(target)
+	targetPortNumber, _ := strconv.Atoi(targetPort)
+	if json.Unmarshal(fixture(map[string]any{"action": "setup", "password": vaultPassword, "pid": os.Getpid(), "ticks": ticks, "managed": managed, "target_host": targetHost, "target_port": targetPortNumber}), &setup) != nil {
 		t.Fatal("invalid fixture response")
 	}
 	// Launch the real HTTP control plane. Backend credentials never use HTTP.
@@ -166,10 +181,29 @@ func postgresVaultSQLScenario(t *testing.T, scenario string) {
 			}
 		}
 	}
+	provider := pgIPCLaravelCredentials(php, filepath.Join(root, "artisan"))
+	if scenario == "managed_revoke_start" {
+		original := provider
+		provider = func(ctx context.Context, session string, resource int64) (pgIPCCredential, error) {
+			credential, e := original(ctx, session, resource)
+			if e == nil {
+				stopCtx, stopCancel := context.WithTimeout(ctx, 2*time.Second)
+				defer stopCancel()
+				data, _ := json.Marshal(map[string]any{"action": "stop_requested"})
+				command := exec.CommandContext(stopCtx, php, filepath.Join(root, "tests/Fixtures/gateway-vault-e2e.php"))
+				command.Env = env
+				command.Stdin = bytes.NewReader(data)
+				if stopErr := command.Run(); stopErr != nil {
+					return pgIPCCredential{}, stopErr
+				}
+			}
+			return credential, e
+		}
+	}
 	workerCtx, stopWorker := context.WithCancel(ctx)
 	done := make(chan error, 1)
 	go func() {
-		done <- pgIPCServeAuthorization(workerCtx, socket, uint32(os.Getuid()), pgIPCLaravelAuthorizer(php, filepath.Join(root, "artisan")), pgIPCLaravelCredentials(php, filepath.Join(root, "artisan")))
+		done <- pgIPCServeAuthorization(workerCtx, socket, uint32(os.Getuid()), pgIPCLaravelAuthorizer(php, filepath.Join(root, "artisan")), provider)
 	}()
 	defer func() {
 		stopWorker()
@@ -183,29 +217,33 @@ func postgresVaultSQLScenario(t *testing.T, scenario string) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if _, e := pgIPCTakeCredentials(ctx, socket, "SAG-IPC-E2E", setup.Resource+1, uint32(os.Getuid())); e == nil {
-		t.Fatal("wrong resource accepted")
-	}
-	foreign := exec.Command(os.Args[0], "-test.run=^TestIPCForeignBootstrapProcess$")
-	foreign.Env = append(os.Environ(), "SAG_E2E_FOREIGN_SOCKET="+socket, "SAG_E2E_FOREIGN_RESOURCE="+strconv.FormatInt(setup.Resource, 10))
-	if foreign.Run() != nil {
-		t.Fatal("foreign process binding check failed")
-	}
-	credentials, err := pgIPCTakeCredentials(ctx, socket, "SAG-IPC-E2E", setup.Resource, uint32(os.Getuid()))
-	if err != nil {
-		t.Fatal("real Vault IPC bootstrap failed")
-	}
-	if credentials.Password != password {
-		t.Fatal("incorrect Vault credential")
-	}
-	if _, e := pgIPCTakeCredentials(ctx, socket, "SAG-IPC-E2E", setup.Resource, uint32(os.Getuid())); e == nil {
-		t.Fatal("bootstrap replay accepted")
-	}
-	fixture(map[string]any{"action": "activate"})
-	foreign = exec.Command(os.Args[0], "-test.run=^TestIPCForeignBootstrapProcess$")
-	foreign.Env = append(os.Environ(), "SAG_E2E_FOREIGN_SOCKET="+socket, "SAG_E2E_FOREIGN_RESOURCE="+strconv.FormatInt(setup.Resource, 10), "SAG_E2E_FOREIGN_ACTIVE=1")
-	if foreign.Run() != nil {
-		t.Fatal("foreign process passed live authorization")
+	var credentials PgBrokerBackendCredential
+	if !managed {
+		if _, e := pgIPCTakeCredentials(ctx, socket, "SAG-IPC-E2E", setup.Resource+1, uint32(os.Getuid())); e == nil {
+			t.Fatal("wrong resource accepted")
+		}
+		foreign := exec.Command(os.Args[0], "-test.run=^TestIPCForeignBootstrapProcess$")
+		foreign.Env = append(os.Environ(), "SAG_E2E_FOREIGN_SOCKET="+socket, "SAG_E2E_FOREIGN_RESOURCE="+strconv.FormatInt(setup.Resource, 10))
+		if foreign.Run() != nil {
+			t.Fatal("foreign process binding check failed")
+		}
+		credentials, err = pgIPCTakeCredentials(ctx, socket, "SAG-IPC-E2E", setup.Resource, uint32(os.Getuid()))
+		if err != nil {
+			t.Fatal("real Vault IPC bootstrap failed")
+		}
+		if credentials.Password != password {
+			t.Fatal("incorrect Vault credential")
+		}
+		if _, e := pgIPCTakeCredentials(ctx, socket, "SAG-IPC-E2E", setup.Resource, uint32(os.Getuid())); e == nil {
+			t.Fatal("bootstrap replay accepted")
+		}
+		fixture(map[string]any{"action": "activate"})
+		foreign = exec.Command(os.Args[0], "-test.run=^TestIPCForeignBootstrapProcess$")
+		foreign.Env = append(os.Environ(), "SAG_E2E_FOREIGN_SOCKET="+socket, "SAG_E2E_FOREIGN_RESOURCE="+strconv.FormatInt(setup.Resource, 10), "SAG_E2E_FOREIGN_ACTIVE=1")
+		if foreign.Run() != nil {
+			t.Fatal("foreign process passed live authorization")
+		}
+
 	}
 
 	cert := testBrokerCertificate(t)
@@ -217,16 +255,100 @@ func postgresVaultSQLScenario(t *testing.T, scenario string) {
 		t.Fatal(err)
 	}
 	defer listener.Close()
-	brokerDone := make(chan error, 1)
-	go func() {
-		conn, e := listener.Accept()
+	brokerAddress := listener.Addr().String()
+	var brokerDone chan error
+	var launcher map[string]any
+	if managed {
+		listener.Close()
+		certPath, keyPath := filepath.Join(dir, "server.crt"), filepath.Join(dir, "server.key")
+		keyDER, e := x509.MarshalPKCS8PrivateKey(cert.PrivateKey)
 		if e != nil {
-			brokerDone <- e
+			t.Fatal(e)
+		}
+		if os.WriteFile(certPath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Certificate[0]}), 0600) != nil || os.WriteFile(keyPath, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER}), 0600) != nil {
+			t.Fatal("TLS fixture failed")
+		}
+		_, port, _ := net.SplitHostPort(brokerAddress)
+		portNumber, _ := strconv.Atoi(port)
+		launcher = map[string]any{"binary": managedBinary, "socket": socket, "cert": certPath, "key": keyPath, "worker_uid": os.Getuid(), "log_dir": filepath.Join(dir, "logs"), "control": "http://" + address, "port": portNumber}
+		defer func() {
+			logs, _ := filepath.Glob(filepath.Join(dir, "logs", "managed-lab", "*.log"))
+			for _, path := range logs {
+				body, _ := os.ReadFile(path)
+				for _, secret := range []string{password, vaultPassword, "e2e-internal-only"} {
+					if bytes.Contains(body, []byte(secret)) {
+						t.Error("managed log disclosed secret")
+					}
+				}
+			}
+		}()
+		defer fixture(map[string]any{"action": "terminate", "launcher": launcher})
+		var result struct {
+			Error     string `json:"error"`
+			Reason    string `json:"reason"`
+			Failed    bool   `json:"failed"`
+			Status    string `json:"status"`
+			PID       int    `json:"gateway_pid"`
+			FailedPID int    `json:"pid"`
+			Consumed  bool   `json:"bootstrap_consumed"`
+		}
+		if json.Unmarshal(fixture(map[string]any{"action": "launch", "launcher": launcher}), &result) != nil {
+			t.Fatal("invalid launcher response")
+		}
+		if scenario == "managed_bad_secret" || scenario == "managed_revoke_start" {
+			expected := "failed"
+			if scenario == "managed_revoke_start" {
+				expected = "terminated"
+			}
+			if !result.Failed || result.Status != expected || result.FailedPID < 2 || !result.Consumed {
+				t.Fatalf("failed launch state mismatch: %+v", result)
+			}
+			if _, e := pgIPCPeerProcessStartTicks(int32(result.FailedPID)); e == nil {
+				t.Fatal("failed broker process remained alive")
+			}
+			if conn, e := net.DialTimeout("tcp", brokerAddress, time.Second); e == nil {
+				conn.Close()
+				t.Fatal("failed broker kept listener")
+			}
+			rows := query(admin, "SELECT count(*)::text FROM pg_stat_activity WHERE usename='ipc_e2e_backend'")
+			if len(rows) != 7 || rows[6] != '0' {
+				t.Fatal("failed launch leaked backend connection")
+			}
+			t.Log("rejected launch left state " + expected + " and child stopped: " + scenario)
 			return
 		}
-		brokerDone <- pgBrokerServeAuthenticatedSession(ctx, conn, &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}, client, "http://"+address, "e2e-internal-only", "SAG-IPC-E2E", "sag_e2e", target, "disable", nil, func(context.Context) (PgBrokerBackendCredential, error) { return credentials, nil }, pgIPCBoundSessionCheck(socket, "SAG-IPC-E2E", setup.Resource, uint32(os.Getuid())))
-	}()
-	front, err := net.Dial("tcp", listener.Addr().String())
+		if result.Failed || result.Status != "started" || result.PID < 2 || !result.Consumed {
+			t.Fatalf("real managed Laravel launch failed: %+v", result)
+		}
+		processEnv, e := os.ReadFile("/proc/" + strconv.Itoa(result.PID) + "/environ")
+		if e != nil {
+			t.Fatal("broker environment unavailable")
+		}
+		for _, forbidden := range []string{"SAG_CE_CREDENTIAL_KEY=", "APP_KEY=", "DB_PASSWORD=", "SAG_INTERNAL_TOKEN="} {
+			if bytes.Contains(processEnv, []byte(forbidden)) {
+				t.Fatal("broker inherited privileged control-plane environment")
+			}
+		}
+		descriptors, _ := os.ReadDir("/proc/" + strconv.Itoa(result.PID) + "/fd")
+		for _, fd := range descriptors {
+			link, _ := os.Readlink("/proc/" + strconv.Itoa(result.PID) + "/fd/" + fd.Name())
+			if strings.Contains(link, "control.sqlite") {
+				t.Fatal("broker inherited control-plane database descriptor")
+			}
+		}
+		t.Log("Laravel launcher recorded process identity, bootstrapped Vault, authenticated backend and activated session")
+	} else {
+		brokerDone = make(chan error, 1)
+		go func() {
+			conn, e := listener.Accept()
+			if e != nil {
+				brokerDone <- e
+				return
+			}
+			brokerDone <- pgBrokerServeAuthenticatedSession(ctx, conn, &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}, client, "http://"+address, "e2e-internal-only", "SAG-IPC-E2E", "sag_e2e", target, "disable", nil, func(context.Context) (PgBrokerBackendCredential, error) { return credentials, nil }, pgIPCBoundSessionCheck(socket, "SAG-IPC-E2E", setup.Resource, uint32(os.Getuid())))
+		}()
+	}
+	front, err := net.Dial("tcp", brokerAddress)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -271,7 +393,21 @@ func postgresVaultSQLScenario(t *testing.T, scenario string) {
 		t.Fatal("SELECT 1 returned unexpected result")
 	}
 	t.Log("real Laravel Vault -> Unix IPC -> broker TLS -> PostgreSQL SCRAM: SELECT 1 = 1")
-	if scenario == "worker_lost" {
+	if managed {
+		var ended struct {
+			Status  string `json:"status"`
+			Gateway struct {
+				Stopped bool `json:"stopped"`
+			} `json:"gateway"`
+		}
+		if json.Unmarshal(fixture(map[string]any{"action": "terminate", "launcher": launcher}), &ended) != nil || ended.Status != "terminated" || !ended.Gateway.Stopped {
+			t.Fatal("managed lifecycle termination failed")
+		}
+		if conn, e := net.DialTimeout("tcp", brokerAddress, time.Second); e == nil {
+			conn.Close()
+			t.Fatal("terminated broker still accepted connections")
+		}
+	} else if scenario == "worker_lost" {
 		stopWorker()
 	} else {
 		fixture(map[string]any{"action": scenario})
@@ -303,10 +439,12 @@ func postgresVaultSQLScenario(t *testing.T, scenario string) {
 	if _, e := secure.Read(b[:]); e == nil {
 		t.Fatal("revoked connection remained open")
 	}
-	select {
-	case <-brokerDone:
-	case <-time.After(time.Second):
-		t.Fatal("broker did not terminate revoked session")
+	if !managed {
+		select {
+		case <-brokerDone:
+		case <-time.After(time.Second):
+			t.Fatal("broker did not terminate revoked session")
+		}
 	}
 	if _, e := pgIPCTakeCredentials(ctx, socket, "SAG-IPC-E2E", setup.Resource, uint32(os.Getuid())); e == nil {
 		t.Fatal("invalidated session issued credentials")

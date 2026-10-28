@@ -7,7 +7,7 @@
 - The PostgreSQL lab Broker needs a backend credential before backend authentication.
 - The laboratory Unix worker now returns process-bound one-time Vault credentials through FD 3 and the private Unix socket; the lab Broker no longer reads a backend password file.
 - Real PostgreSQL `SELECT 1`, replay rejection, resource/process binding, live revocation/expiry, deactivation, process replacement and IPC worker loss are covered by [the isolated SQL E2E](VAULT_IPC_SQL_E2E.md).
-- Production launch/capability rollout and the other database engines remain gated; these PostgreSQL laboratory checks alone do not establish production readiness.
+- Automatic PostgreSQL lab launch now records identity, waits for native backend authentication and activates over private pipes. Production launch/capability rollout and the other database engines remain gated; these PostgreSQL laboratory checks alone do not establish production readiness.
 
 ## Required state transitions
 
@@ -15,7 +15,7 @@
 2. Launcher records the unique OS process identity (PID, process start ticks, exact binary, session UID) and a session-bound, one-time launch authorization available only to that process, not to the browser or command-line arguments.
 3. A dedicated local Worker authenticates the IPC peer, validates the exact session/resource, live process identity, launch authorization and expiry atomically; it rejects replay and all other sessions.
 4. Only that specifically bound `starting` Broker may complete its initial bootstrap. General secret retrieval must continue to reject arbitrary `starting` sessions.
-5. The Broker verifies the client's temporary password and completes native backend authentication. Only after successful authentication is `started` reported.
+5. The managed lab launcher reports `started` only after the native adapter proves backend authentication and readiness. Every frontend must still independently verify its temporary password before SQL; merely binding a TCP listener is never readiness.
 6. Revocation, expiry, deactivation, process replacement, IPC failure or vault failure must close the connection without falling back to passthrough.
 
 ## Security invariants

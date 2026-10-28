@@ -19,6 +19,8 @@ import (
 // process-bound, one-time Laravel Vault IPC bootstrap.
 // Binds localhost by default and permits only one concurrent connection.
 func main() {
+	cleanFDs := flag.Bool("managed-fds-ready", false, "internal inherited descriptor boundary")
+	supervised := flag.Bool("supervised", false, "require inherited launcher control pipes")
 	listen := flag.String("listen", "127.0.0.1:15432", "laboratory bind address")
 	target := flag.String("target", "sag-ce-lab-postgres:5432", "backend address")
 	mode := flag.String("backend-tls", "disable", "backend transport")
@@ -32,7 +34,12 @@ func main() {
 	tokenFile := flag.String("token-file", "", "internal API token file")
 	session := flag.String("session", "", "temporary access session UID")
 	flag.Parse()
-	if *socket == "" || *resource <= 0 || *workerUID > uint(^uint32(0)) || *certFile == "" || *keyFile == "" || *tokenFile == "" || *session == "" || *control == "" {
+	if *supervised && !*cleanFDs {
+		if err := brokerReexecManaged(os.Args[1:]); err != nil {
+			fatal(err)
+		}
+	}
+	if *socket == "" || *resource <= 0 || *workerUID > uint(^uint32(0)) || *certFile == "" || *keyFile == "" || (!*supervised && *tokenFile == "") || *session == "" || *control == "" {
 		fatal(errors.New("missing required lab configuration"))
 	}
 	if *mode != "disable" {
@@ -52,7 +59,16 @@ func main() {
 		}
 		return strings.TrimSuffix(strings.TrimSuffix(string(data), "\n"), "\r"), nil
 	}
-	token, err := readSecret(*tokenFile)
+	var token string
+	var launch *brokerLaunchControl
+	if *supervised {
+		launch, token, err = brokerReadManagedLaunch(os.Stdin, os.NewFile(3, "launcher-ready"), "postgresql", *session, *resource)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "LAB_LAUNCH_CONTROL_INVALID:", err)
+		}
+	} else {
+		token, err = readSecret(*tokenFile)
+	}
 	if err != nil {
 		fatal(err)
 	}
@@ -65,11 +81,23 @@ func main() {
 	if err != nil {
 		fatal(errors.New("bootstrap denied"))
 	}
+	if *supervised {
+		probe, e := pgBrokerBackendConnectWithMode(*target, *mode, nil, credentials.Username, credentials.Password, *db)
+		if e != nil {
+			fatal(errors.New("backend readiness failed"))
+		}
+		probe.Close()
+	}
 	listener, err := net.Listen("tcp", *listen)
 	if err != nil {
 		fatal(err)
 	}
 	defer listener.Close()
+	if launch != nil {
+		if err = launch.backendReady(); err != nil {
+			fatal(err)
+		}
+	}
 	fmt.Printf("LAB_BROKER_LISTEN=%s\n", listener.Addr())
 	for {
 		conn, e := listener.Accept()

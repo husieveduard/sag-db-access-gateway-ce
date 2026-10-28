@@ -460,7 +460,7 @@ class DbGatewayLifecycleService
         ];
     }
 
-    private function allocatePort(
+    protected function allocatePort(
         DbAccessSession $session,
         string $listenHost,
     ): int {
@@ -486,7 +486,7 @@ class DbGatewayLifecycleService
         throw new RuntimeException('No free DB Gateway port is available.');
     }
 
-    private function assertStartable(DbAccessSession $session): void
+    protected function assertStartable(DbAccessSession $session): void
     {
         if (!in_array($session->status, ['created', 'failed'], true)) {
             throw new RuntimeException(
@@ -517,7 +517,7 @@ class DbGatewayLifecycleService
         }
     }
 
-    private function markStartFailed(
+    protected function markStartFailed(
         DbAccessSession $session,
         string $reason,
     ): void {
@@ -556,7 +556,7 @@ class DbGatewayLifecycleService
         return true;
     }
 
-    private function hostPort(string $host, int $port): string
+    protected function hostPort(string $host, int $port): string
     {
         $host = trim($host);
 
@@ -567,7 +567,7 @@ class DbGatewayLifecycleService
         return $host.':'.$port;
     }
 
-    private function isProcessRunning(int $pid): bool
+    protected function isProcessRunning(int $pid): bool
     {
         if ($pid <= 1) {
             return false;
@@ -588,9 +588,11 @@ class DbGatewayLifecycleService
      * Reject recycled PIDs and unrelated processes even if their arguments
      * happen to mention sag-db-gateway. Linux /proc is required by CE worker.
      */
-    private function isExpectedGatewayProcess(int $pid, DbAccessSession $session): bool
+    protected function isExpectedGatewayProcess(int $pid, DbAccessSession $session): bool
     {
-        $binary = realpath((string) config('sag.db_gateway.binary', ''));
+        $binaryKey = data_get($session->metadata, 'db.managed_lab') === true && app()->environment('local', 'testing')
+            ? 'sag.db_gateway.managed_lab.postgresql_binary' : 'sag.db_gateway.binary';
+        $binary = realpath((string) config($binaryKey, ''));
         $executable = @readlink('/proc/'.$pid.'/exe');
 
         if ($binary === false || $executable === false || $executable !== $binary) {
@@ -625,7 +627,7 @@ class DbGatewayLifecycleService
      * Save on launch to detect PID reuse. A legacy session without ticks
      * still must pass exact executable and session UID checks.
      */
-    private function processStartTicks(int $pid): ?string
+    protected function processStartTicks(int $pid): ?string
     {
         $stat = @file_get_contents('/proc/'.$pid.'/stat');
         if ($stat === false) {
@@ -675,7 +677,7 @@ class DbGatewayLifecycleService
         return $exitCode === 0;
     }
 
-    private function writeAudit(
+    protected function writeAudit(
         DbAccessSession $session,
         ?DbConnection $connection,
         string $eventType,
