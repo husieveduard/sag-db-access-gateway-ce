@@ -214,6 +214,36 @@ final class AuthorizedGatewayVaultTest extends TestCase
         ])->expectsOutput('DENY')->assertExitCode(1);
     }
 
+    public function test_starting_bootstrap_can_be_consumed_only_once(): void
+    {
+        $session = $this->makeVaultSession();
+        $session->forceFill([
+            'status' => 'starting',
+            'metadata' => ['db' => [
+                'gateway_pid' => 12345,
+                'gateway_proc_start_ticks' => '987654321',
+            ]],
+        ])->save();
+
+        $args = [
+            'session_uid' => $session->public_id,
+            'resource_id' => (string) $session->resource_id,
+            '--peer-pid' => '12345',
+            '--peer-start-ticks' => '987654321',
+            '--consume-bootstrap' => true,
+        ];
+
+        $this->artisan('sag:verify-gateway-ipc-session', $args)
+            ->expectsOutput('ALLOW')->assertExitCode(0);
+        $this->artisan('sag:verify-gateway-ipc-session', $args)
+            ->expectsOutput('DENY')->assertExitCode(1);
+
+        $this->assertNotNull(data_get($session->fresh()->metadata, 'db.bootstrap_consumed_at'));
+        $this->assertFalse(app(AuthorizedGatewayVault::class)->isActiveSessionResource(
+            $session->public_id, (int) $session->resource_id
+        ));
+    }
+
     public function test_missing_session_does_not_access_vault(): void
     {
         $vault = app(ResourceCredentialVault::class);
