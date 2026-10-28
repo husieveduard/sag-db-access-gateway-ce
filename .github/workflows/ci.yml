@@ -167,6 +167,14 @@ jobs:
             postgres_session_ipc_probe.go
           test -x /tmp/sag-ipc-worker-ci
           test -x /tmp/sag-ipc-probe-ci
+          go build -o /tmp/sag-vault-broker-ci \
+            lab_broker_main.go lab_broker_wire.go \
+            postgres_broker_session.go postgres_broker_session_guard.go \
+            postgres_broker_frontend.go postgres_broker_tls.go postgres_broker_auth.go \
+            postgres_broker_backend.go postgres_broker_backend_auth.go \
+            postgres_broker_backend_connect.go postgres_broker_backend_scram.go \
+            postgres_scram.go temporary_credential_client.go \
+            postgres_session_ipc_probe.go postgres_ipc_credentials_linux.go
 
   docker:
     name: Docker build
@@ -195,3 +203,42 @@ jobs:
             sag-db-access-gateway-ce-nginx -c \
             'test -r /var/www/html/public/css/sag-ce.css && \
              head -c 1 /var/www/html/public/css/sag-ce.css >/dev/null'
+
+  vault-ipc-sql:
+    name: Laravel Vault Unix IPC SQL E2E
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: sag_e2e
+          POSTGRES_PASSWORD: isolated_e2e_admin_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sag_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.x'
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: bcmath, mbstring, pdo_sqlite, zip
+          coverage: none
+      - name: Install Laravel dependencies
+        working-directory: control-plane
+        run: |
+          composer install --no-interaction --prefer-dist --no-progress
+          cp .env.example .env
+          mkdir -p storage/framework/views storage/framework/cache/data storage/framework/sessions bootstrap/cache
+      - name: Verify real Vault IPC broker SQL and revocation
+        working-directory: db-gateway
+        env:
+          SAG_E2E_POSTGRES: 127.0.0.1:5432
+          SAG_E2E_ADMIN_PASSWORD: isolated_e2e_admin_only
+        run: go test -v -run '^TestLaravelVaultIPCPostgresSQL$' -count=1 ./...

@@ -1,12 +1,13 @@
 # PR21: Temporary Broker readiness and Vault IPC acceptance contract
 
-## Observed integration gap
+## Integration status
 
 - DbGatewayLifecycleService starts a session in `starting`.
 - AuthorizedGatewayVault::isActiveSessionResource and forBoundActiveSession accept only `started`.
 - The PostgreSQL lab Broker needs a backend credential before backend authentication.
-- The currently implemented Unix IPC server returns only non-secret allow/deny; the lab Broker reads a separate password file.
-- Thus the live Broker cannot be claimed production-ready even when Go and PHP CI are green.
+- The laboratory Unix worker now returns process-bound one-time Vault credentials through FD 3 and the private Unix socket; the lab Broker no longer reads a backend password file.
+- Real PostgreSQL `SELECT 1`, replay rejection, resource/process binding and live revocation are covered by [the isolated SQL E2E](VAULT_IPC_SQL_E2E.md).
+- Production launch/capability rollout and the other database engines remain gated; these PostgreSQL laboratory checks alone do not establish production readiness.
 
 ## Required state transitions
 

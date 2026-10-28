@@ -330,4 +330,19 @@ final class AuthorizedGatewayVaultTest extends TestCase
         $this->expectException(DomainException::class);
         app(AuthorizedGatewayVault::class)->forActiveSession('nonexistent', $vault);
     }
+    public function test_credential_command_without_private_pipe_never_discloses_or_consumes(): void
+    {
+        $session = $this->makeVaultSession();
+        $session->update(['status' => 'starting', 'metadata' => ['db' => [
+            'gateway_pid' => 12345, 'gateway_proc_start_ticks' => '987654321',
+        ]]]);
+        $this->artisan('sag:take-gateway-ipc-credentials', [
+            'session_uid' => $session->public_id,
+            'resource_id' => (string) $session->resource_id,
+            '--peer-pid' => '12345',
+            '--peer-start-ticks' => '987654321',
+        ])->doesntExpectOutput()->assertExitCode(1);
+        $this->assertNull(data_get($session->fresh()->metadata, 'db.bootstrap_consumed_at'));
+    }
+
 }
