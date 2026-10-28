@@ -18,12 +18,15 @@ EOF
 openssl x509 -req -in "$cert_dir/server.csr" -CA "$cert_dir/ca.crt" -CAkey "$cert_dir/ca.key" -CAcreateserial -out "$cert_dir/server.crt" -days 2 -extfile "$cert_dir/extensions" >/dev/null 2>&1
 # Files are individually mounted into the DB images; host parent stays private.
 chmod 644 "$cert_dir/server.key" "$cert_dir/server.crt" "$cert_dir/ca.crt"
-docker network create --internal sag-pr21-mysql-lab >/dev/null
 mysql_publish=''
 maria_publish=''
 if [ "${SAG_LAB_PUBLISH_PORTS:-0}" = 1 ]; then
  mysql_publish='-p 127.0.0.1:33306:3306'
  maria_publish='-p 127.0.0.1:33307:3306'
+ # An internal Docker network suppresses published ports on current engines.
+ docker network create sag-pr21-mysql-lab >/dev/null
+else
+ docker network create --internal sag-pr21-mysql-lab >/dev/null
 fi
 # Deliberate word splitting only for the fixed port options above.
 # shellcheck disable=SC2086

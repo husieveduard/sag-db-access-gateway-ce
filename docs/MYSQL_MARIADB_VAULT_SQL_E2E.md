@@ -39,7 +39,8 @@ There is no downgrade to plaintext or passthrough. MSSQL is still refused.
 Build with scripts/build-mysql-lab-broker.sh /absolute/path. Start only disposable
 servers with scripts/start-mysql-lab.sh: MySQL 8.4 and MariaDB 11.4, each requiring
 TLS, signed by an ephemeral test CA. The default private network has no published
-ports. SAG_LAB_PUBLISH_PORTS=1 publishes only CI loopback ports 33306/33307.
+ports. SAG_LAB_PUBLISH_PORTS=1 uses a separate bridge network and publishes
+only CI loopback ports 33306/33307; Docker internal networks suppress publishing.
 The script creates only resources named sag-pr21-mysql, sag-pr21-mariadb and
 sag-pr21-mysql-lab. Remove those exact resources after testing.
 
