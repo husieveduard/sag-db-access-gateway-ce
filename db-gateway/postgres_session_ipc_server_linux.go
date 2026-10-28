@@ -19,6 +19,7 @@ import (
 type pgIPCSessionAuthorize func(context.Context, string, int64) bool
 
 type pgIPCPeerIdentityKey struct{}
+type pgIPCBootstrapConsumeKey struct{}
 type pgIPCPeerIdentity struct { PID int32; StartTicks string }
 
 // pgIPCServeAuthorization handles only non-secret allow/deny responses.
@@ -69,9 +70,12 @@ func pgIPCHandleAuthorization(ctx context.Context, conn net.Conn, trustedUID uin
  var request struct {
   SessionUID string `json:"session_uid"`
   ResourceID int64 `json:"resource_id"`
+  Operation string `json:"operation"`
  }
  if json.Unmarshal(frame,&request)!=nil || len(request.SessionUID)==0 || len(request.SessionUID)>128 || request.ResourceID<=0{return}
+ if request.Operation!="" && request.Operation!="authorize" && request.Operation!="consume_bootstrap" {return}
  peerCtx:=context.WithValue(ctx,pgIPCPeerIdentityKey{},pgIPCPeerIdentity{PID:peerPID,StartTicks:peerTicks})
+ if request.Operation=="consume_bootstrap" {peerCtx=context.WithValue(peerCtx,pgIPCBootstrapConsumeKey{},true)}
  allowed:=ctx.Err()==nil && authorize(peerCtx,request.SessionUID,request.ResourceID)
  _=json.NewEncoder(conn).Encode(struct {
   Allowed bool `json:"allowed"`
