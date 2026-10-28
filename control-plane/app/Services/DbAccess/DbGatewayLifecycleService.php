@@ -73,6 +73,8 @@ class DbGatewayLifecycleService
             [
                 'engine' => $resource->engine,
                 'gateway_pid' => null,
+                'gateway_proc_start_ticks' => null,
+                'bootstrap_consumed_at' => null,
                 'gateway_log_path' => $logFile,
                 'gateway_started_at' => $now->toIso8601String(),
             ],
