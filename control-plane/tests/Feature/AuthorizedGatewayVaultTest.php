@@ -244,6 +244,31 @@ final class AuthorizedGatewayVaultTest extends TestCase
         ));
     }
 
+    public function test_bootstrap_consume_denies_wrong_process_and_revoked_session(): void
+    {
+        $session = $this->makeVaultSession();
+        $session->forceFill([
+            'status' => 'starting',
+            'metadata' => ['db' => [
+                'gateway_pid' => 12345,
+                'gateway_proc_start_ticks' => '987654321',
+            ]],
+        ])->save();
+
+        $gate = app(AuthorizedGatewayVault::class);
+        $uid = $session->public_id;
+        $resourceId = (int) $session->resource_id;
+
+        $this->assertFalse($gate->consumeStartingProcessBootstrap($uid, $resourceId, 12346, '987654321'));
+        $this->assertFalse($gate->consumeStartingProcessBootstrap($uid, $resourceId, 12345, '987654322'));
+        $this->assertFalse($gate->consumeStartingProcessBootstrap($uid, $resourceId + 1, 12345, '987654321'));
+        $this->assertNull(data_get($session->fresh()->metadata, 'db.bootstrap_consumed_at'));
+
+        $session->update(['status' => 'terminated']);
+        $this->assertFalse($gate->consumeStartingProcessBootstrap($uid, $resourceId, 12345, '987654321'));
+        $this->assertNull(data_get($session->fresh()->metadata, 'db.bootstrap_consumed_at'));
+    }
+
     public function test_missing_session_does_not_access_vault(): void
     {
         $vault = app(ResourceCredentialVault::class);
