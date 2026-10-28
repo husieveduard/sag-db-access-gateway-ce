@@ -27,6 +27,11 @@ func pgIPCLaravelAuthorizer(phpBinary, artisanPath string) pgIPCSessionAuthorize
   if peer,ok:=ctx.Value(pgIPCPeerIdentityKey{}).(pgIPCPeerIdentity);ok && peer.PID>1 && peer.StartTicks!="" {
    args=append(args,"--peer-pid="+strconv.FormatInt(int64(peer.PID),10),"--peer-start-ticks="+peer.StartTicks)
   }
+  if consume,ok:=ctx.Value(pgIPCBootstrapConsumeKey{}).(bool);ok && consume {
+   peer,valid:=ctx.Value(pgIPCPeerIdentityKey{}).(pgIPCPeerIdentity)
+   if !valid || peer.PID<2 || peer.StartTicks=="" {return false}
+   args=append(args,"--consume-bootstrap")
+  }
   cmd:=exec.CommandContext(checkCtx,phpBinary,args...)
   output,err:=cmd.Output()
   if err!=nil || checkCtx.Err()!=nil || len(output)>128{return false}
