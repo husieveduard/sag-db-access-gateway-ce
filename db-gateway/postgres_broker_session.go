@@ -68,7 +68,7 @@ func pgBrokerServeAuthenticatedSession(
    backendKind,_,rawMessage,backendErr:=readPgMessage(backend)
    if backendErr!=nil{return backendErr}
    if backendKind=='K'||backendKind=='R'{return errors.New("unexpected backend control message")}
-   if _,err=frontend.Write(rawMessage);err!=nil{return err}
+   if _,err=io.Copy(frontend,bytesReader(rawMessage));err!=nil{return err}
    if backendKind=='Z'{break}
    if n==99999{return errors.New("backend response message limit exceeded")}
   }
