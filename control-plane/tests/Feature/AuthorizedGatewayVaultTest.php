@@ -269,6 +269,61 @@ final class AuthorizedGatewayVaultTest extends TestCase
         $this->assertNull(data_get($session->fresh()->metadata, 'db.bootstrap_consumed_at'));
     }
 
+    public function test_process_bound_vault_bootstrap_is_atomic_and_one_time(): void
+    {
+        $session = $this->makeVaultSession();
+        $session->forceFill([
+            'status' => 'starting',
+            'metadata' => ['db' => [
+                'gateway_pid' => 12345,
+                'gateway_proc_start_ticks' => '987654321',
+            ]],
+        ])->save();
+        $vault = app(ResourceCredentialVault::class);
+        $vault->replace((int) $session->resource_id, 'broker_test', 'vault-only-fixture', (int) $session->owner_user_id);
+        $gate = app(AuthorizedGatewayVault::class);
+        $uid = $session->public_id;
+        $resource = (int) $session->resource_id;
+
+        try {
+            $gate->takeBootstrapCredentials($uid, $resource, 12345, 'wrong', $vault);
+            $this->fail('Wrong process was granted credentials.');
+        } catch (DomainException $e) {
+            $this->assertSame('Gateway bootstrap is not authorized.', $e->getMessage());
+        }
+        $this->assertNull(data_get($session->fresh()->metadata, 'db.bootstrap_consumed_at'));
+
+        $credentials = $gate->takeBootstrapCredentials($uid, $resource, 12345, '987654321', $vault);
+        $this->assertSame('broker_test', $credentials['username']);
+        $this->assertSame('vault-only-fixture', $credentials['password']);
+        $this->assertNotNull(data_get($session->fresh()->metadata, 'db.bootstrap_consumed_at'));
+
+        $this->expectException(DomainException::class);
+        $gate->takeBootstrapCredentials($uid, $resource, 12345, '987654321', $vault);
+    }
+
+    public function test_missing_vault_secret_does_not_spend_bootstrap(): void
+    {
+        $session = $this->makeVaultSession();
+        $session->forceFill([
+            'status' => 'starting',
+            'metadata' => ['db' => [
+                'gateway_pid' => 12345,
+                'gateway_proc_start_ticks' => '987654321',
+            ]],
+        ])->save();
+        try {
+            app(AuthorizedGatewayVault::class)->takeBootstrapCredentials(
+                $session->public_id, (int) $session->resource_id, 12345,
+                '987654321', app(ResourceCredentialVault::class)
+            );
+            $this->fail('Missing credentials were granted.');
+        } catch (DomainException $e) {
+            $this->assertSame('Backend credentials are unavailable.', $e->getMessage());
+        }
+        $this->assertNull(data_get($session->fresh()->metadata, 'db.bootstrap_consumed_at'));
+    }
+
     public function test_missing_session_does_not_access_vault(): void
     {
         $vault = app(ResourceCredentialVault::class);
