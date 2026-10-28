@@ -56,7 +56,7 @@ func pgBrokerWriteAuthenticationCleartext(conn net.Conn) error {
  frame[0] = 'R'
  binary.BigEndian.PutUint32(frame[1:5], 8)
  binary.BigEndian.PutUint32(frame[5:9], 3)
- _, err := conn.Write(frame[:])
+ _, err := io.Copy(conn, bytes.NewReader(frame[:]))
  return err
 }
 
