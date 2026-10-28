@@ -138,6 +138,53 @@ final class AuthorizedGatewayVaultTest extends TestCase
         ])->expectsOutput('DENY')->assertExitCode(1);
     }
 
+    public function test_starting_session_requires_exact_recorded_process_identity(): void
+    {
+        $session = $this->makeVaultSession();
+        $session->forceFill([
+            'status' => 'starting',
+            'metadata' => ['db' => [
+                'gateway_pid' => 12345,
+                'gateway_proc_start_ticks' => '987654321',
+            ]],
+        ])->save();
+
+        $gate = app(AuthorizedGatewayVault::class);
+        $uid = $session->public_id;
+        $resource = (int) $session->resource_id;
+
+        $this->assertTrue($gate->isStartingSessionBoundToProcess($uid, $resource, 12345, '987654321'));
+        $this->assertFalse($gate->isStartingSessionBoundToProcess($uid, $resource, 12346, '987654321'));
+        $this->assertFalse($gate->isStartingSessionBoundToProcess($uid, $resource, 12345, '987654322'));
+        $this->assertFalse($gate->isStartingSessionBoundToProcess($uid, $resource + 1, 12345, '987654321'));
+        $this->assertFalse($gate->isStartingSessionBoundToProcess($uid, $resource, 12345, 'invalid'));
+
+        // Existing Vault retrieval must still deny a starting session.
+        $this->expectException(DomainException::class);
+        $gate->forBoundActiveSession($uid, $resource, app(ResourceCredentialVault::class));
+    }
+
+    public function test_starting_process_identity_is_denied_after_expiry_or_deactivation(): void
+    {
+        $session = $this->makeVaultSession();
+        $session->forceFill([
+            'status' => 'starting',
+            'metadata' => ['db' => [
+                'gateway_pid' => 12345,
+                'gateway_proc_start_ticks' => '987654321',
+            ]],
+        ])->save();
+        $gate = app(AuthorizedGatewayVault::class);
+        $uid = $session->public_id;
+        $resource = (int) $session->resource_id;
+
+        $session->update(['expires_at' => now()->subSecond()]);
+        $this->assertFalse($gate->isStartingSessionBoundToProcess($uid, $resource, 12345, '987654321'));
+        $session->update(['expires_at' => now()->addHour()]);
+        $session->resource->update(['is_active' => false]);
+        $this->assertFalse($gate->isStartingSessionBoundToProcess($uid, $resource, 12345, '987654321'));
+    }
+
     public function test_missing_session_does_not_access_vault(): void
     {
         $vault = app(ResourceCredentialVault::class);
