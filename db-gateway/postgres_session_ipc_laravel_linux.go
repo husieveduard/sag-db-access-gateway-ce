@@ -24,13 +24,14 @@ func pgIPCLaravelAuthorizer(phpBinary, artisanPath string) pgIPCSessionAuthorize
   checkCtx,cancel:=context.WithTimeout(ctx,2*time.Second)
   defer cancel()
   args:=[]string{artisanPath,"sag:verify-gateway-ipc-session",sessionUID,strconv.FormatInt(resourceID,10),"--no-ansi","--no-interaction"}
-  if peer,ok:=ctx.Value(pgIPCPeerIdentityKey{}).(pgIPCPeerIdentity);ok && peer.PID>1 && peer.StartTicks!="" {
-   args=append(args,"--peer-pid="+strconv.FormatInt(int64(peer.PID),10),"--peer-start-ticks="+peer.StartTicks)
-  }
+  // Read-only authorization always checks the live started session.
+  // Peer identity is passed only for the explicit one-time bootstrap path:
+  // otherwise a starting session could accidentally pass an authorize probe.
   if consume,ok:=ctx.Value(pgIPCBootstrapConsumeKey{}).(bool);ok && consume {
    peer,valid:=ctx.Value(pgIPCPeerIdentityKey{}).(pgIPCPeerIdentity)
    if !valid || peer.PID<2 || peer.StartTicks=="" {return false}
-   args=append(args,"--consume-bootstrap")
+   args=append(args,"--peer-pid="+strconv.FormatInt(int64(peer.PID),10),
+    "--peer-start-ticks="+peer.StartTicks,"--consume-bootstrap")
   }
   cmd:=exec.CommandContext(checkCtx,phpBinary,args...)
   output,err:=cmd.Output()
