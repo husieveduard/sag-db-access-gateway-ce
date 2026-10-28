@@ -8,6 +8,8 @@ import (
  "io"
  "net"
  "os"
+ "strconv"
+ "strings"
  "syscall"
  "time"
 )
@@ -56,7 +58,7 @@ func pgIPCHandleAuthorization(ctx context.Context, conn net.Conn, trustedUID uin
  // Peer PID is obtained from the kernel, never accepted from the request.
  // The legacy authorization probe remains non-secret and only checks an
  // already-started session; bootstrap eligibility must use a separate gate.
- _=peerPID
+ if _,err:=pgIPCPeerProcessStartTicks(peerPID);err!=nil{return}
  if conn.SetDeadline(time.Now().Add(3*time.Second))!=nil{return}
  frame,frameErr:=bufio.NewReader(io.LimitReader(conn,1025)).ReadBytes('\n')
  if frameErr!=nil||len(frame)>1024{return}
@@ -71,4 +73,22 @@ func pgIPCHandleAuthorization(ctx context.Context, conn net.Conn, trustedUID uin
   SessionUID string `json:"session_uid"`
   ResourceID int64 `json:"resource_id"`
  }{allowed,request.SessionUID,request.ResourceID})
+}
+
+ 
+// pgIPCPeerProcessStartTicks reads Linux /proc/<pid>/stat field 22.
+// This is an independent process-identity attribute used to reject missing
+// and zombie peers before performing non-secret authorization.
+func pgIPCPeerProcessStartTicks(pid int32) (string,error) {
+ if pid<=1{return "",errors.New("invalid peer process")}
+ stat,err:=os.ReadFile("/proc/"+strconv.FormatInt(int64(pid),10)+"/stat")
+ if err!=nil{return "",errors.New("peer process unavailable")}
+ last:=strings.LastIndex(string(stat),") ")
+ if last<0{return "",errors.New("invalid peer process stat")}
+ fields:=strings.Fields(string(stat[last+2:]))
+ if len(fields)<20 || fields[0]=="Z" {return "",errors.New("peer process not active")}
+ ticks:=fields[19]
+ if ticks=="" {return "",errors.New("missing process start ticks")}
+ for _,ch:=range ticks {if ch<'0'||ch>'9'{return "",errors.New("invalid process start ticks")}}
+ return ticks,nil
 }
