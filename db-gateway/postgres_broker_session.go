@@ -62,12 +62,13 @@ func pgBrokerServeAuthenticatedSession(
   frame[0]='Q'
   binary.BigEndian.PutUint32(frame[1:5],uint32(4+len(payload)))
   copy(frame[5:],payload)
-  _=backend.SetDeadline(time.Now().Add(30*time.Second))
+  if err=backend.SetDeadline(time.Now().Add(30*time.Second));err!=nil{return err}
   if _,err=io.Copy(backend,bytesReader(frame));err!=nil{return err}
   for n:=0;n<100000;n++{
    backendKind,_,rawMessage,backendErr:=readPgMessage(backend)
    if backendErr!=nil{return backendErr}
    if backendKind=='K'||backendKind=='R'{return errors.New("unexpected backend control message")}
+   if err=frontend.SetWriteDeadline(time.Now().Add(30*time.Second));err!=nil{return err}
    if _,err=io.Copy(frontend,bytesReader(rawMessage));err!=nil{return err}
    if backendKind=='Z'{break}
    if n==99999{return errors.New("backend response message limit exceeded")}
