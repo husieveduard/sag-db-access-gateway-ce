@@ -61,3 +61,10 @@ func TestPGIPCRejectsOversizedAndConcatenatedRequests(t *testing.T) {
   _=conn.Close()
  }
 }
+
+func TestPGIPCPeerProcessIdentityFromKernel(t *testing.T) {
+ ticks,err:=pgIPCPeerProcessStartTicks(int32(os.Getpid()))
+ if err!=nil||ticks==""{t.Fatalf("live peer identity missing: %v",err)}
+ if _,err:=pgIPCPeerProcessStartTicks(0);err==nil{t.Fatal("invalid process accepted")}
+ if _,err:=pgIPCPeerProcessStartTicks(-1);err==nil{t.Fatal("negative process accepted")}
+}
