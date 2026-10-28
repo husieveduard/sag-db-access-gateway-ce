@@ -28,9 +28,10 @@ func pgBrokerServeAuthenticatedSession(
  backendAddr, backendTransport string, backendTLS *tls.Config,
  vault func(context.Context) (PgBrokerBackendCredential,error),
 ) error {
+ if raw==nil{return errors.New("frontend connection unavailable")}
+ defer raw.Close()
  if vault==nil {return errors.New("backend credential provider unavailable")}
  if ctx==nil||ctx.Err()!=nil{return errors.New("invalid session context")}
- defer raw.Close()
  frontend,err:=pgBrokerAuthenticateFrontend(ctx,raw,frontendTLS,controlClient,controlURL,internalToken,sessionUID,database)
  if err!=nil{return err}
  credentials,err:=vault(ctx)
