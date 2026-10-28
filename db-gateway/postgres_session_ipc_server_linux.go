@@ -18,6 +18,9 @@ import (
 // It must verify live status, resource ownership and expiry independently.
 type pgIPCSessionAuthorize func(context.Context, string, int64) bool
 
+type pgIPCPeerIdentityKey struct{}
+type pgIPCPeerIdentity struct { PID int32; StartTicks string }
+
 // pgIPCServeAuthorization handles only non-secret allow/deny responses.
 // The socket directory must be private; never bind this endpoint to TCP.
 // Linux SO_PEERCRED prevents a session UID from acting as authentication.
@@ -58,7 +61,8 @@ func pgIPCHandleAuthorization(ctx context.Context, conn net.Conn, trustedUID uin
  // Peer PID is obtained from the kernel, never accepted from the request.
  // The legacy authorization probe remains non-secret and only checks an
  // already-started session; bootstrap eligibility must use a separate gate.
- if _,err:=pgIPCPeerProcessStartTicks(peerPID);err!=nil{return}
+ peerTicks,err:=pgIPCPeerProcessStartTicks(peerPID)
+ if err!=nil{return}
  if conn.SetDeadline(time.Now().Add(3*time.Second))!=nil{return}
  frame,frameErr:=bufio.NewReader(io.LimitReader(conn,1025)).ReadBytes('\n')
  if frameErr!=nil||len(frame)>1024{return}
@@ -67,7 +71,8 @@ func pgIPCHandleAuthorization(ctx context.Context, conn net.Conn, trustedUID uin
   ResourceID int64 `json:"resource_id"`
  }
  if json.Unmarshal(frame,&request)!=nil || len(request.SessionUID)==0 || len(request.SessionUID)>128 || request.ResourceID<=0{return}
- allowed:=ctx.Err()==nil && authorize(ctx,request.SessionUID,request.ResourceID)
+ peerCtx:=context.WithValue(ctx,pgIPCPeerIdentityKey{},pgIPCPeerIdentity{PID:peerPID,StartTicks:peerTicks})
+ allowed:=ctx.Err()==nil && authorize(peerCtx,request.SessionUID,request.ResourceID)
  _=json.NewEncoder(conn).Encode(struct {
   Allowed bool `json:"allowed"`
   SessionUID string `json:"session_uid"`
