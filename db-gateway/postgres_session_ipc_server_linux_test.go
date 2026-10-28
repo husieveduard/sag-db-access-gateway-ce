@@ -92,3 +92,23 @@ func TestPGIPCBootstrapOperationIsExplicit(t *testing.T) {
  if !send("consume_bootstrap"){t.Fatal("explicit bootstrap operation rejected")}
  if send("unknown"){t.Fatal("unknown operation accepted")}
 }
+
+func TestPGIPCConsumeBootstrapHasOneTimeSemantics(t *testing.T) {
+ path:=filepath.Join(t.TempDir(),"once.sock")
+ ctx,cancel:=context.WithCancel(context.Background())
+ done:=make(chan error,1)
+ count:=0
+ go func(){done<-pgIPCServeAuthorization(ctx,path,uint32(os.Getuid()),func(ctx context.Context,uid string,id int64) bool {
+  if uid!="SAG-ONCE"||id!=42{return false}
+  consume,_:=ctx.Value(pgIPCBootstrapConsumeKey{}).(bool)
+  if !consume{return false}
+  count++
+  return count==1
+ })}()
+ defer func(){cancel();<-done}()
+ for i:=0;i<100;i++{if _,err:=os.Stat(path);err==nil{break};time.Sleep(5*time.Millisecond)}
+ if pgIPCCheckSession(ctx,path,"SAG-ONCE",42){t.Fatal("read-only probe unexpectedly allowed")}
+ if !pgIPCConsumeBootstrap(ctx,path,"SAG-ONCE",42){t.Fatal("first use denied")}
+ if pgIPCConsumeBootstrap(ctx,path,"SAG-ONCE",42){t.Fatal("replay allowed")}
+ if count!=2{t.Fatalf("unexpected consume count: %d",count)}
+}
