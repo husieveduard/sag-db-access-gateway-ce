@@ -29,6 +29,43 @@ final class AuthorizedGatewayVault
     }
 
     /**
+     * Non-secret bootstrap eligibility, not a credential-granting API.
+     * The trusted IPC server must independently authenticate the OS peer
+     * and obtain its PID/start ticks from the kernel, never from JSON.
+     * The session's stored identity is set by the controlled launcher.
+     */
+    public function isStartingSessionBoundToProcess(
+        string $sessionUid,
+        int $resourceId,
+        int $peerPid,
+        string $peerStartTicks,
+    ): bool {
+        if ($sessionUid === '' || $resourceId < 1 || $peerPid < 2
+            || $peerStartTicks === '' || ! ctype_digit($peerStartTicks)) {
+            return false;
+        }
+
+        $session = DbAccessSession::query()->with('resource')
+            ->where('public_id', $sessionUid)
+            ->where('resource_id', $resourceId)
+            ->first();
+
+        if ($session === null || $session->mode !== 'temporary'
+            || $session->status !== 'starting'
+            || $session->expires_at === null || ! $session->expires_at->isFuture()
+            || $session->resource?->is_active !== true) {
+            return false;
+        }
+
+        $pid = data_get($session->metadata, 'db.gateway_pid');
+        $ticks = data_get($session->metadata, 'db.gateway_proc_start_ticks');
+
+        return is_numeric($pid) && (int) $pid === $peerPid
+            && is_string($ticks) && $ticks !== ''
+            && hash_equals($ticks, $peerStartTicks);
+    }
+
+    /**
      * Bound credential lookup for a trusted local IPC worker.
      * The worker must independently authenticate its Unix peer.
      *
