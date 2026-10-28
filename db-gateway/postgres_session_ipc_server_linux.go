@@ -45,10 +45,18 @@ func pgIPCHandleAuthorization(ctx context.Context, conn net.Conn, trustedUID uin
  raw,err:=unixConn.SyscallConn()
  if err!=nil{return}
  authenticated:=false
+ var peerPID int32
  if err=raw.Control(func(fd uintptr){
   cred,e:=syscall.GetsockoptUcred(int(fd),syscall.SOL_SOCKET,syscall.SO_PEERCRED)
-  authenticated=e==nil && cred.Uid==trustedUID
+  if e==nil && cred.Uid==trustedUID && cred.Pid>1 {
+   peerPID=cred.Pid
+   authenticated=true
+  }
  });err!=nil || !authenticated{return}
+ // Peer PID is obtained from the kernel, never accepted from the request.
+ // The legacy authorization probe remains non-secret and only checks an
+ // already-started session; bootstrap eligibility must use a separate gate.
+ _=peerPID
  if conn.SetDeadline(time.Now().Add(3*time.Second))!=nil{return}
  frame,frameErr:=bufio.NewReader(io.LimitReader(conn,1025)).ReadBytes('\n')
  if frameErr!=nil||len(frame)>1024{return}
