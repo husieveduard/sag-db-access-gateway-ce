@@ -4,6 +4,7 @@ namespace App\Services\Credentials;
 
 use App\Models\DbAccessSession;
 use DomainException;
+use Illuminate\Support\Facades\DB;
 
 final class AuthorizedGatewayVault
 {
@@ -63,6 +64,38 @@ final class AuthorizedGatewayVault
         return is_numeric($pid) && (int) $pid === $peerPid
             && is_string($ticks) && $ticks !== ''
             && hash_equals($ticks, $peerStartTicks);
+    }
+
+    /**
+     * Atomically consume the non-secret initial bootstrap gate once.
+     * This method does not return Vault credentials and is NOT sufficient
+     * as standalone IPC authentication.
+     */
+    public function consumeStartingProcessBootstrap(
+        string $sessionUid, int $resourceId, int $peerPid, string $peerStartTicks,
+    ): bool {
+        return DB::transaction(function () use ($sessionUid, $resourceId, $peerPid, $peerStartTicks): bool {
+            $session = DbAccessSession::query()
+                ->where('public_id', $sessionUid)
+                ->where('resource_id', $resourceId)
+                ->lockForUpdate()->first();
+
+            if ($session === null
+                || data_get($session->metadata, 'db.bootstrap_consumed_at') !== null
+                || ! $this->isStartingSessionBoundToProcess(
+                    $sessionUid, $resourceId, $peerPid, $peerStartTicks
+                )) {
+                return false;
+            }
+
+            $metadata = is_array($session->metadata) ? $session->metadata : [];
+            $db = is_array($metadata['db'] ?? null) ? $metadata['db'] : [];
+            $db['bootstrap_consumed_at'] = now()->toIso8601String();
+            $metadata['db'] = $db;
+            $session->forceFill(['metadata' => $metadata])->save();
+
+            return true;
+        }, 3);
     }
 
     /**
