@@ -1,6 +1,8 @@
 package main
 
 import (
+ "context"
+ "strings"
  "encoding/binary"
  "net"
  "testing"
@@ -49,4 +51,27 @@ func TestPgBrokerLargeFrameRoundTrip(t *testing.T) {
  if kind!='D'||len(got)!=len(payload){t.Fatal("incomplete frame")}
  for i:=range payload{if got[i]!=payload[i]{t.Fatalf("frame mismatch at %d",i)}}
  if err:=<-done;err!=nil{t.Fatal(err)}
+}
+
+func TestPgBrokerRejectsMissingProviderAndClosesFrontend(t *testing.T) {
+ client,server:=net.Pipe()
+ defer client.Close()
+ err:=pgBrokerServeAuthenticatedSession(context.Background(),server,nil,nil,"","","","", "", "",nil,nil)
+ if err==nil||!strings.Contains(err.Error(),"credential provider"){t.Fatalf("unexpected error: %v",err)}
+ _=client.SetReadDeadline(time.Now().Add(time.Second))
+ var b [1]byte
+ if _,err=client.Read(b[:]);err==nil{t.Fatal("frontend not closed")}
+}
+
+func TestPgBrokerRejectsCanceledSessionAndClosesFrontend(t *testing.T) {
+ client,server:=net.Pipe()
+ defer client.Close()
+ ctx,cancel:=context.WithCancel(context.Background())
+ cancel()
+ err:=pgBrokerServeAuthenticatedSession(ctx,server,nil,nil,"","","","", "", "",nil,
+  func(context.Context)(PgBrokerBackendCredential,error){return PgBrokerBackendCredential{},nil})
+ if err==nil{t.Fatal("canceled session accepted")}
+ _=client.SetReadDeadline(time.Now().Add(time.Second))
+ var b [1]byte
+ if _,err=client.Read(b[:]);err==nil{t.Fatal("frontend not closed")}
 }
