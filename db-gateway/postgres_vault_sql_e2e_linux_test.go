@@ -25,6 +25,12 @@ import (
 // Requires an isolated PostgreSQL with admin password from test-only env,
 // PHP with SQLite and installed Laravel dependencies. Never points at production.
 func TestLaravelVaultIPCPostgresSQL(t *testing.T) {
+	for _, scenario := range []string{"revoke", "expire", "deactivate", "replace_pid", "replace_ticks", "worker_lost"} {
+		t.Run(scenario, func(t *testing.T) { postgresVaultSQLScenario(t, scenario) })
+	}
+}
+
+func postgresVaultSQLScenario(t *testing.T, scenario string) {
 	target := os.Getenv("SAG_E2E_POSTGRES")
 	if target == "" {
 		t.Skip("set SAG_E2E_POSTGRES for isolated PostgreSQL E2E")
@@ -76,12 +82,16 @@ func TestLaravelVaultIPCPostgresSQL(t *testing.T) {
 	}
 	query(admin, "CREATE ROLE ipc_e2e_backend LOGIN PASSWORD '"+password+"'")
 	defer query(admin, "DROP ROLE ipc_e2e_backend")
+	query(admin, "CREATE TABLE ipc_guard_probe(value integer)")
+	defer query(admin, "DROP TABLE ipc_guard_probe")
+	query(admin, "GRANT INSERT ON ipc_guard_probe TO ipc_e2e_backend")
+
 	if invalid, e := pgBrokerBackendConnectWithMode(target, "disable", nil, "ipc_e2e_backend", "invalid-fixture-password", "sag_e2e"); e == nil {
 		invalid.Close()
 		t.Fatal("isolated PostgreSQL must require password authentication")
 	}
 
-	env := append(os.Environ(), "APP_ENV=testing", "APP_DEBUG=false", "APP_KEY=base64:"+base64.StdEncoding.EncodeToString(random),
+	env := append(os.Environ(), "APP_ENV=testing", "APP_DEBUG=false", "BCRYPT_ROUNDS=4", "APP_KEY=base64:"+base64.StdEncoding.EncodeToString(random),
 		"SAG_CE_CREDENTIAL_KEY=base64:"+base64.StdEncoding.EncodeToString(random), "DB_CONNECTION=sqlite", "DB_DATABASE="+filepath.Join(dir, "control.sqlite"),
 		"CACHE_STORE=array", "SESSION_DRIVER=array", "LOG_CHANNEL=stderr", "SAG_INTERNAL_TOKEN=e2e-internal-only")
 	if err = os.WriteFile(filepath.Join(dir, "control.sqlite"), nil, 0600); err != nil {
@@ -135,7 +145,7 @@ func TestLaravelVaultIPCPostgresSQL(t *testing.T) {
 			t.Error("backend password leaked to HTTP logs")
 		}
 	}()
-	client := &http.Client{Timeout: 2 * time.Second}
+	client := &http.Client{Timeout: 5 * time.Second}
 	for i := 0; i < 100; i++ {
 		resp, e := client.Get("http://" + address + "/api/health")
 		if e == nil {
@@ -156,12 +166,13 @@ func TestLaravelVaultIPCPostgresSQL(t *testing.T) {
 			}
 		}
 	}
+	workerCtx, stopWorker := context.WithCancel(ctx)
 	done := make(chan error, 1)
 	go func() {
-		done <- pgIPCServeAuthorization(ctx, socket, uint32(os.Getuid()), pgIPCLaravelAuthorizer(php, filepath.Join(root, "artisan")), pgIPCLaravelCredentials(php, filepath.Join(root, "artisan")))
+		done <- pgIPCServeAuthorization(workerCtx, socket, uint32(os.Getuid()), pgIPCLaravelAuthorizer(php, filepath.Join(root, "artisan")), pgIPCLaravelCredentials(php, filepath.Join(root, "artisan")))
 	}()
 	defer func() {
-		cancel()
+		stopWorker()
 		if e := <-done; e != nil {
 			t.Error("IPC shutdown failed")
 		}
@@ -191,6 +202,12 @@ func TestLaravelVaultIPCPostgresSQL(t *testing.T) {
 		t.Fatal("bootstrap replay accepted")
 	}
 	fixture(map[string]any{"action": "activate"})
+	foreign = exec.Command(os.Args[0], "-test.run=^TestIPCForeignBootstrapProcess$")
+	foreign.Env = append(os.Environ(), "SAG_E2E_FOREIGN_SOCKET="+socket, "SAG_E2E_FOREIGN_RESOURCE="+strconv.FormatInt(setup.Resource, 10), "SAG_E2E_FOREIGN_ACTIVE=1")
+	if foreign.Run() != nil {
+		t.Fatal("foreign process passed live authorization")
+	}
+
 	cert := testBrokerCertificate(t)
 	pool := x509.NewCertPool()
 	parsed, _ := x509.ParseCertificate(cert.Certificate[0])
@@ -207,7 +224,7 @@ func TestLaravelVaultIPCPostgresSQL(t *testing.T) {
 			brokerDone <- e
 			return
 		}
-		brokerDone <- pgBrokerServeAuthenticatedSession(ctx, conn, &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}, client, "http://"+address, "e2e-internal-only", "SAG-IPC-E2E", "sag_e2e", target, "disable", nil, func(context.Context) (PgBrokerBackendCredential, error) { return credentials, nil })
+		brokerDone <- pgBrokerServeAuthenticatedSession(ctx, conn, &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}, client, "http://"+address, "e2e-internal-only", "SAG-IPC-E2E", "sag_e2e", target, "disable", nil, func(context.Context) (PgBrokerBackendCredential, error) { return credentials, nil }, pgIPCBoundSessionCheck(socket, "SAG-IPC-E2E", setup.Resource, uint32(os.Getuid())))
 	}()
 	front, err := net.Dial("tcp", listener.Addr().String())
 	if err != nil {
@@ -235,7 +252,12 @@ func TestLaravelVaultIPCPostgresSQL(t *testing.T) {
 	for {
 		kind, payload, _, e := readPgMessage(secure)
 		if e != nil {
-			t.Fatal("frontend authentication failed")
+			select {
+			case brokerErr := <-brokerDone:
+				t.Logf("broker startup result: %v", brokerErr)
+			default:
+			}
+			t.Fatalf("frontend authentication failed: %v", e)
 		}
 		if bytes.Contains(payload, []byte(password)) {
 			t.Fatal("backend secret leaked")
@@ -249,10 +271,33 @@ func TestLaravelVaultIPCPostgresSQL(t *testing.T) {
 		t.Fatal("SELECT 1 returned unexpected result")
 	}
 	t.Log("real Laravel Vault -> Unix IPC -> broker TLS -> PostgreSQL SCRAM: SELECT 1 = 1")
-	fixture(map[string]any{"action": "revoke"})
-	if pgIPCCheckSession(ctx, socket, "SAG-IPC-E2E", setup.Resource) {
-		t.Fatal("revoked IPC session allowed")
+	if scenario == "worker_lost" {
+		stopWorker()
+	} else {
+		fixture(map[string]any{"action": scenario})
 	}
+	// Worker loss must deny even while the independent HTTP gate still allows.
+	if scenario == "worker_lost" && !checkBrokerSessionActive(ctx, client, "http://"+address, "e2e-internal-only", "SAG-IPC-E2E") {
+		t.Fatal("HTTP gate unexpectedly denied healthy session")
+	}
+	// Give worker shutdown time to close the listener without cancelling broker ctx.
+	if scenario == "worker_lost" {
+		for i := 0; i < 100; i++ {
+			if _, e := os.Stat(socket); os.IsNotExist(e) {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+	if pgIPCBoundSessionCheck(socket, "SAG-IPC-E2E", setup.Resource, uint32(os.Getuid()))(ctx) {
+		t.Fatal("invalidated local session allowed")
+	}
+
+	// A query queued after invalidation must not reach PostgreSQL.
+	if scenario == "expire" || scenario == "deactivate" || scenario == "replace_ticks" {
+		_ = pgBrokerFrame(secure, 'Q', append([]byte("INSERT INTO ipc_guard_probe VALUES (1)"), 0))
+	}
+	// The other cases send no new query, exercising the periodic idle guard.
 	secure.SetReadDeadline(time.Now().Add(7 * time.Second))
 	var b [1]byte
 	if _, e := secure.Read(b[:]); e == nil {
@@ -263,7 +308,24 @@ func TestLaravelVaultIPCPostgresSQL(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("broker did not terminate revoked session")
 	}
-	t.Log("bootstrap replay, wrong resource, and live session revocation rejected")
+	if _, e := pgIPCTakeCredentials(ctx, socket, "SAG-IPC-E2E", setup.Resource, uint32(os.Getuid())); e == nil {
+		t.Fatal("invalidated session issued credentials")
+	}
+	writes := query(admin, "SELECT count(*)::text FROM ipc_guard_probe")
+	if len(writes) != 7 || writes[6] != '0' {
+		t.Fatal("post-invalidation SQL was forwarded")
+	}
+
+	// Server-side SQL connection must be gone as well, not merely the TLS client.
+	for i := 0; i < 50; i++ {
+		rows := query(admin, "SELECT count(*)::text FROM pg_stat_activity WHERE usename='ipc_e2e_backend'")
+		if len(rows) == 7 && rows[6] == '0' {
+			t.Log("both SQL endpoints closed after " + scenario)
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("backend connection remained open after invalidation")
 }
 
 func TestIPCForeignBootstrapProcess(t *testing.T) {
@@ -272,6 +334,13 @@ func TestIPCForeignBootstrapProcess(t *testing.T) {
 		t.Skip("subprocess helper")
 	}
 	resource, _ := strconv.ParseInt(os.Getenv("SAG_E2E_FOREIGN_RESOURCE"), 10, 64)
+	if os.Getenv("SAG_E2E_FOREIGN_ACTIVE") == "1" {
+		if pgIPCBoundSessionCheck(socket, "SAG-IPC-E2E", resource, uint32(os.Getuid()))(context.Background()) {
+			t.Fatal("foreign process passed live gate")
+		}
+		return
+	}
+
 	if _, err := pgIPCTakeCredentials(context.Background(), socket, "SAG-IPC-E2E", resource, uint32(os.Getuid())); err == nil {
 		t.Fatal("foreign process obtained credentials")
 	}

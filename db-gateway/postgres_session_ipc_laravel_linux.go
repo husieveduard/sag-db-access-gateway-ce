@@ -27,16 +27,16 @@ func pgIPCLaravelAuthorizer(phpBinary, artisanPath string) pgIPCSessionAuthorize
 		checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		defer cancel()
 		args := []string{artisanPath, "sag:verify-gateway-ipc-session", sessionUID, strconv.FormatInt(resourceID, 10), "--no-ansi", "--no-interaction"}
-		// Read-only authorization always checks the live started session.
-		// Peer identity is passed only for the explicit one-time bootstrap path:
-		// otherwise a starting session could accidentally pass an authorize probe.
+		// Every Unix request carries the kernel-derived process identity.
+		peer, valid := ctx.Value(pgIPCPeerIdentityKey{}).(pgIPCPeerIdentity)
+		if !valid || peer.PID < 2 || peer.StartTicks == "" {
+			return false
+		}
+		args = append(args, "--peer-pid="+strconv.FormatInt(int64(peer.PID), 10), "--peer-start-ticks="+peer.StartTicks)
 		if consume, ok := ctx.Value(pgIPCBootstrapConsumeKey{}).(bool); ok && consume {
-			peer, valid := ctx.Value(pgIPCPeerIdentityKey{}).(pgIPCPeerIdentity)
-			if !valid || peer.PID < 2 || peer.StartTicks == "" {
-				return false
-			}
-			args = append(args, "--peer-pid="+strconv.FormatInt(int64(peer.PID), 10),
-				"--peer-start-ticks="+peer.StartTicks, "--consume-bootstrap")
+			args = append(args, "--consume-bootstrap")
+		} else {
+			args = append(args, "--active-peer")
 		}
 		cmd := exec.CommandContext(checkCtx, phpBinary, args...)
 		output, err := cmd.Output()

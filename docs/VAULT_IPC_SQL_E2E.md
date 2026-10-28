@@ -23,9 +23,16 @@ credentials/encryption key. No HTTP route returns backend credentials.
 
 The supervisor must record the actual broker PID/start ticks in a `starting`
 session before bootstrap, then activate the session before accepting client
-queries. Credentials stay in broker memory for that session. The existing live
-session guard checks before each query and closes both connections on revocation,
-expiry or control-plane failure. The lab runner emits only fixed failure codes.
+queries. Credentials stay in broker memory for that session. The broker requires
+a live local authorization callback, checked before client startup, after backend
+authentication, before each query and by the periodic guard. The post-backend,
+per-query and periodic checks also retain independent HTTP authorization. The worker revalidates the original PID/start ticks, consumed bootstrap,
+resource activity, session status and expiry. Worker loss, process replacement,
+revocation or expiry closes both connections; HTTP allow alone is insufficient.
+The periodic guard runs every two seconds with a three-second check deadline.
+These lab checks invoke the local Artisan verifier; production rollout remains
+gated, including performance validation. The lab runner emits only fixed failure
+codes.
 
 ## Repeatable test
 
@@ -47,7 +54,12 @@ Laravel on stdin, and stored encrypted in a temporary SQLite control-plane DB.
 Only session-scoped temporary frontend credentials are returned by the fixture.
 The test starts real Laravel HTTP verification, the actual Unix worker callback,
 and a TLS broker; it verifies `SELECT 1 = 1`, wrong resource, a foreign process,
-bootstrap replay and live connection closure after revocation. HTTP process output
+bootstrap replay and live connection closure after revocation, expiry, resource deactivation,
+PID/start-tick replacement and worker loss. Worker-loss testing leaves the HTTP
+gate allowed and does not cancel the broker context. Idle scenarios exercise the
+periodic guard; the other scenarios attempt an INSERT and independently assert
+that PostgreSQL received no rows. pg_stat_activity verifies backend closure too.
+HTTP process output
 is captured and checked for backend-password disclosure. PostgreSQL ports need
 not be published when running containers on a private test network. Use `--init`
 for the test container because the IPC gate rejects PID 1. CI runs this test in
@@ -56,11 +68,11 @@ for the test container because the IPC gate rejects PID 1. CI runs this test in
 ## Local validation, 2026-10-28
 
 - Go 1.22 suite passed; worker, broker and gateway builds passed.
-- Laravel feature suite: 108 passed, 494 assertions. The separately gated real
+- Laravel feature suite: 110 passed, 512 assertions. The separately gated real
   Linux gateway lifecycle test also passed (1 test, 8 assertions).
 - PostgreSQL 16 on an internal Docker network, without published ports:
   `SELECT 1 = 1`; incorrect backend password, wrong resource, unrelated process
   with the same UID and bootstrap replay rejected; active connection closed
-  after session revocation. The test uses verified frontend TLS and isolated
+  after all six invalidation scenarios, with no unauthorized INSERT reaching PostgreSQL. The test uses verified frontend TLS and isolated
   SCRAM backend authentication with explicitly disabled backend TLS in the lab.
 - Repository preflight and whitespace checks passed.

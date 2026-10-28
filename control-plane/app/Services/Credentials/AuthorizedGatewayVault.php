@@ -29,6 +29,26 @@ final class AuthorizedGatewayVault
             && $session->resource?->is_active === true;
     }
 
+    /** Live non-secret gate, still bound to the originally bootstrapped process. */
+    public function isActiveSessionBoundToProcess(
+        string $sessionUid, int $resourceId, int $peerPid, string $peerStartTicks,
+    ): bool {
+        if ($sessionUid === '' || $resourceId < 1 || $peerPid < 2
+            || $peerStartTicks === '' || !ctype_digit($peerStartTicks)) {
+            return false;
+        }
+        $session = DbAccessSession::query()->with('resource')->where('public_id', $sessionUid)
+            ->where('resource_id', $resourceId)->first();
+        return $session !== null
+            && $session->mode === 'temporary' && $session->status === 'started'
+            && $session->expires_at !== null && $session->expires_at->isFuture()
+            && $session->resource?->is_active === true
+            && data_get($session->metadata, 'db.bootstrap_consumed_at') !== null
+            && (int) data_get($session->metadata, 'db.gateway_pid', 0) === $peerPid
+            && is_string($ticks = data_get($session->metadata, 'db.gateway_proc_start_ticks'))
+            && hash_equals($ticks, $peerStartTicks);
+    }
+
     /**
      * Non-secret bootstrap eligibility, not a credential-granting API.
      * The trusted IPC server must independently authenticate the OS peer

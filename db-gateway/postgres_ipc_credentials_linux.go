@@ -20,15 +20,7 @@ func pgIPCTakeCredentials(ctx context.Context, socket, session string, resource 
 		return empty, errIPCUnavailable
 	}
 	defer conn.Close()
-	raw, err := conn.(*net.UnixConn).SyscallConn()
-	if err != nil {
-		return empty, errIPCUnavailable
-	}
-	trusted := false
-	if raw.Control(func(fd uintptr) {
-		cred, e := syscall.GetsockoptUcred(int(fd), syscall.SOL_SOCKET, syscall.SO_PEERCRED)
-		trusted = e == nil && cred.Uid == workerUID && cred.Pid > 1
-	}) != nil || !trusted {
+	if !pgIPCTrustedWorker(conn, workerUID) {
 		return empty, errIPCUnavailable
 	}
 	deadline := time.Now().Add(3 * time.Second)
@@ -54,4 +46,27 @@ func pgIPCTakeCredentials(ctx context.Context, socket, session string, resource 
 		return empty, errIPCUnavailable
 	}
 	return PgBrokerBackendCredential{Username: reply.Credential.Username, Password: reply.Credential.Password}, nil
+}
+
+// Used for both the credential grant and all subsequent live session checks.
+func pgIPCTrustedWorker(conn net.Conn, workerUID uint32) bool {
+	unixConn, ok := conn.(*net.UnixConn)
+	if !ok {
+		return false
+	}
+	raw, err := unixConn.SyscallConn()
+	if err != nil {
+		return false
+	}
+	trusted := false
+	return raw.Control(func(fd uintptr) {
+		cred, e := syscall.GetsockoptUcred(int(fd), syscall.SOL_SOCKET, syscall.SO_PEERCRED)
+		trusted = e == nil && cred.Uid == workerUID && cred.Pid > 1
+	}) == nil && trusted
+}
+
+func pgIPCBoundSessionCheck(socket, session string, resource int64, workerUID uint32) func(context.Context) bool {
+	return func(ctx context.Context) bool {
+		return pgIPCCheckSessionWithPeer(ctx, socket, session, resource, func(conn net.Conn) bool { return pgIPCTrustedWorker(conn, workerUID) })
+	}
 }

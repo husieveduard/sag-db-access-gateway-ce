@@ -345,4 +345,48 @@ final class AuthorizedGatewayVaultTest extends TestCase
         $this->assertNull(data_get($session->fresh()->metadata, 'db.bootstrap_consumed_at'));
     }
 
+    public function test_live_process_gate_checks_identity_bootstrap_and_lifecycle(): void
+    {
+        foreach (['valid', 'wrong_pid', 'wrong_ticks', 'missing_bootstrap', 'starting',
+            'revoked', 'expired', 'inactive', 'wrong_resource'] as $case) {
+            $session = $this->makeVaultSession();
+            $session->update(['metadata' => ['db' => [
+                'gateway_pid' => 12345, 'gateway_proc_start_ticks' => '987654321',
+                'bootstrap_consumed_at' => $case === 'missing_bootstrap' ? null : now()->toIso8601String(),
+            ]]]);
+            match ($case) {
+                'starting' => $session->update(['status' => 'starting']),
+                'revoked' => $session->update(['status' => 'terminated']),
+                'expired' => $session->update(['expires_at' => now()->subMinute()]),
+                'inactive' => $session->resource->update(['is_active' => false]),
+                default => null,
+            };
+            $this->assertSame($case === 'valid', app(AuthorizedGatewayVault::class)->isActiveSessionBoundToProcess(
+                $session->public_id, $session->resource_id + ($case === 'wrong_resource' ? 1 : 0),
+                $case === 'wrong_pid' ? 12346 : 12345,
+                $case === 'wrong_ticks' ? '987654322' : '987654321',
+            ), $case);
+        }
+    }
+
+    public function test_active_peer_command_requires_kernel_identity_and_never_consumes(): void
+    {
+        $session = $this->makeVaultSession();
+        $consumed = now()->toIso8601String();
+        $session->update(['metadata' => ['db' => [
+            'gateway_pid' => 12345, 'gateway_proc_start_ticks' => '987654321',
+            'bootstrap_consumed_at' => $consumed,
+        ]]]);
+        $args = ['session_uid' => $session->public_id, 'resource_id' => (string) $session->resource_id,
+            '--peer-pid' => '12345', '--peer-start-ticks' => '987654321', '--active-peer' => true];
+        $this->artisan('sag:verify-gateway-ipc-session', $args)->expectsOutput('ALLOW')->assertExitCode(0);
+        $this->artisan('sag:verify-gateway-ipc-session', array_merge($args, ['--peer-pid' => '12346']))
+            ->expectsOutput('DENY')->assertExitCode(1);
+        $this->artisan('sag:verify-gateway-ipc-session', array_merge($args, ['--peer-pid' => '']))
+            ->expectsOutput('DENY')->assertExitCode(1);
+        $this->artisan('sag:verify-gateway-ipc-session', array_merge($args, ['--consume-bootstrap' => true]))
+            ->expectsOutput('DENY')->assertExitCode(1);
+        $this->assertSame($consumed, data_get($session->fresh()->metadata, 'db.bootstrap_consumed_at'));
+    }
+
 }

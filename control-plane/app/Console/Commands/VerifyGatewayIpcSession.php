@@ -10,7 +10,7 @@ use Illuminate\Console\Command;
 // Never return Vault passwords, session metadata, or diagnostics to stdout.
 final class VerifyGatewayIpcSession extends Command
 {
-    protected $signature = 'sag:verify-gateway-ipc-session {session_uid} {resource_id} {--peer-pid=} {--peer-start-ticks=} {--consume-bootstrap}';
+    protected $signature = 'sag:verify-gateway-ipc-session {session_uid} {resource_id} {--peer-pid=} {--peer-start-ticks=} {--consume-bootstrap} {--active-peer}';
     protected $description = 'Check a live gateway session/resource binding (non-secret)';
 
     public function handle(AuthorizedGatewayVault $authorization): int
@@ -29,7 +29,12 @@ final class VerifyGatewayIpcSession extends Command
         // The process-bound bootstrap path is available only to a trusted
         // IPC worker which obtains both values from the Linux kernel.
         // Plain calls retain the existing started-only authorization.
-        if ($pid !== '' || $ticks !== '') {
+        if ($this->option('active-peer')) {
+            $valid = ctype_digit($pid) && strlen($pid) <= 10
+                && ctype_digit($ticks) && strlen($ticks) <= 24;
+            $allowed = $valid && !$this->option('consume-bootstrap')
+                && $authorization->isActiveSessionBoundToProcess($uid, (int) $rawId, (int) $pid, $ticks);
+        } elseif ($pid !== '' || $ticks !== '') {
             $valid = ctype_digit($pid) && strlen($pid) <= 10
                 && ctype_digit($ticks) && strlen($ticks) <= 24;
             $allowed = $valid && ($this->option('consume-bootstrap')

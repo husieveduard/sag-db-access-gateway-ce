@@ -60,4 +60,7 @@ func TestCredentialClientRejectsWrongWorkerIdentity(t *testing.T) {
 	if got, err := pgIPCTakeCredentials(ctx, socket, "session", 7, uint32(os.Getuid())+1); err == nil || got.Password != "" {
 		t.Fatal("untrusted worker returned credentials")
 	}
+	if pgIPCBoundSessionCheck(socket, "session", 7, uint32(os.Getuid())+1)(ctx) {
+		t.Fatal("untrusted live worker allowed session")
+	}
 }

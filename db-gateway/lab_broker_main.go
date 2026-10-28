@@ -81,11 +81,11 @@ func main() {
 			Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12,
 		}, &http.Client{Timeout: 5 * time.Second}, *control, token, *session, *db, *target, *mode, nil,
 			func(context.Context) (PgBrokerBackendCredential, error) {
-				if !pgIPCCheckSession(context.Background(), *socket, *session, *resource) {
+				if !pgIPCBoundSessionCheck(*socket, *session, *resource, uint32(*workerUID))(ctx) {
 					return PgBrokerBackendCredential{}, errors.New("session denied")
 				}
 				return credentials, nil
-			})
+			}, pgIPCBoundSessionCheck(*socket, *session, *resource, uint32(*workerUID)))
 		cancel()
 		if e != nil {
 			fmt.Fprintln(os.Stderr, "LAB_SESSION_FAILED")

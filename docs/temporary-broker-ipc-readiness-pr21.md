@@ -6,7 +6,7 @@
 - AuthorizedGatewayVault::isActiveSessionResource and forBoundActiveSession accept only `started`.
 - The PostgreSQL lab Broker needs a backend credential before backend authentication.
 - The laboratory Unix worker now returns process-bound one-time Vault credentials through FD 3 and the private Unix socket; the lab Broker no longer reads a backend password file.
-- Real PostgreSQL `SELECT 1`, replay rejection, resource/process binding and live revocation are covered by [the isolated SQL E2E](VAULT_IPC_SQL_E2E.md).
+- Real PostgreSQL `SELECT 1`, replay rejection, resource/process binding, live revocation/expiry, deactivation, process replacement and IPC worker loss are covered by [the isolated SQL E2E](VAULT_IPC_SQL_E2E.md).
 - Production launch/capability rollout and the other database engines remain gated; these PostgreSQL laboratory checks alone do not establish production readiness.
 
 ## Required state transitions

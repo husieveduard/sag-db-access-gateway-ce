@@ -32,5 +32,15 @@ if ($input['action'] === 'setup') {
     echo json_encode(['resource' => $resource->id, 'temporary' => $temporary], JSON_THROW_ON_ERROR);
 } else {
     $session = App\Models\DbAccessSession::query()->where('public_id', 'SAG-IPC-E2E')->firstOrFail();
-    $session->update(['status' => $input['action'] === 'activate' ? 'started' : 'terminated']);
+    match ($input['action']) {
+        'activate' => $session->update(['status' => 'started']),
+        'revoke' => $session->update(['status' => 'terminated']),
+        'expire' => $session->update(['expires_at' => now()->subMinute()]),
+        'deactivate' => $session->resource->update(['is_active' => false]),
+        'replace_pid', 'replace_ticks' => $session->update(['metadata' => ['db' => array_merge(
+            $session->metadata['db'], $input['action'] === 'replace_pid'
+                ? ['gateway_pid' => 99999999] : ['gateway_proc_start_ticks' => '0']
+        )]]),
+        default => throw new RuntimeException('Unknown test scenario.'),
+    };
 }
