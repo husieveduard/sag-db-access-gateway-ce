@@ -185,6 +185,35 @@ final class AuthorizedGatewayVaultTest extends TestCase
         $this->assertFalse($gate->isStartingSessionBoundToProcess($uid, $resource, 12345, '987654321'));
     }
 
+    public function test_local_ipc_bootstrap_command_requires_matching_process_identity(): void
+    {
+        $session = $this->makeVaultSession();
+        $session->forceFill([
+            'status' => 'starting',
+            'metadata' => ['db' => [
+                'gateway_pid' => 12345,
+                'gateway_proc_start_ticks' => '987654321',
+            ]],
+        ])->save();
+        $params = [
+            'session_uid' => $session->public_id,
+            'resource_id' => (string) $session->resource_id,
+        ];
+
+        $this->artisan('sag:verify-gateway-ipc-session', $params)
+            ->expectsOutput('DENY')->assertExitCode(1);
+
+        $this->artisan('sag:verify-gateway-ipc-session', $params + [
+            '--peer-pid' => '12345',
+            '--peer-start-ticks' => '987654321',
+        ])->expectsOutput('ALLOW')->assertExitCode(0);
+
+        $this->artisan('sag:verify-gateway-ipc-session', $params + [
+            '--peer-pid' => '12345',
+            '--peer-start-ticks' => '987654322',
+        ])->expectsOutput('DENY')->assertExitCode(1);
+    }
+
     public function test_missing_session_does_not_access_vault(): void
     {
         $vault = app(ResourceCredentialVault::class);
