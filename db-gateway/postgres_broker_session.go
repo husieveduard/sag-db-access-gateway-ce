@@ -13,10 +13,6 @@ import (
 
 // PgBrokerBackendCredential is only supplied by a trusted server-side vault
 // integration. Do not serialize it to the frontend or place it in logs.
-type PgBrokerBackendCredential struct {
-	Username string
-	Password string
-}
 
 // pgBrokerServeAuthenticatedSession bridges PostgreSQL simple-query traffic
 // after two INDEPENDENT authentications. It is a lab-only primitive and is

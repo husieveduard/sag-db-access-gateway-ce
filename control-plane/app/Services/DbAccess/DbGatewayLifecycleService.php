@@ -591,7 +591,8 @@ class DbGatewayLifecycleService
     protected function isExpectedGatewayProcess(int $pid, DbAccessSession $session): bool
     {
         $binaryKey = data_get($session->metadata, 'db.managed_lab') === true && app()->environment('local', 'testing')
-            ? 'sag.db_gateway.managed_lab.postgresql_binary' : 'sag.db_gateway.binary';
+            ? (in_array(data_get($session->metadata, 'db.engine'), ['mysql', 'mariadb'], true)
+                ? 'sag.db_gateway.managed_lab.mysql_binary' : 'sag.db_gateway.managed_lab.postgresql_binary') : 'sag.db_gateway.binary';
         $binary = realpath((string) config($binaryKey, ''));
         $executable = @readlink('/proc/'.$pid.'/exe');
 

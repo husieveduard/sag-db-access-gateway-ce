@@ -238,3 +238,42 @@ jobs:
         run: |
           ../scripts/build-postgres-lab-broker.sh /tmp/sag-vault-broker-ci
           go test -v -run '^TestLaravelVaultIPCPostgresSQL$' -count=1 ./...
+
+  mysql-vault-ipc-sql:
+    name: MySQL 8.4 and MariaDB 11.4 Vault SQL E2E
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.x'
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: bcmath, mbstring, pdo_sqlite, zip
+          coverage: none
+      - name: Install Laravel dependencies
+        working-directory: control-plane
+        run: |
+          composer install --no-interaction --prefer-dist --no-progress
+          cp .env.example .env
+          mkdir -p storage/framework/views storage/framework/cache/data storage/framework/sessions bootstrap/cache
+      - name: Start isolated verified-TLS databases
+        env:
+          SAG_LAB_PUBLISH_PORTS: '1'
+        run: ./scripts/start-mysql-lab.sh
+      - name: Build native adapter and verify SQL lifecycle
+        working-directory: db-gateway
+        env:
+          SAG_E2E_MYSQL_TARGET: 127.0.0.1:33306
+          SAG_E2E_MARIADB_TARGET: 127.0.0.1:33307
+          SAG_E2E_MYSQL_BROKER_BINARY: /tmp/sag-mysql-broker-ci
+        run: |
+          export SAG_E2E_MYSQL_CA="$GITHUB_WORKSPACE/.work/mysql-lab-tls/ca.crt"
+          ../scripts/build-mysql-lab-broker.sh /tmp/sag-mysql-broker-ci
+          go test -v -run '^TestMySQLMariaDBVaultSQL$' -count=1 -timeout=5m ./...
+      - name: Remove disposable databases
+        if: always()
+        run: |
+          docker rm -f sag-pr21-mysql sag-pr21-mariadb || true
+          docker network rm sag-pr21-mysql-lab || true

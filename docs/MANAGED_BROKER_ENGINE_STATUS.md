@@ -7,7 +7,7 @@ launch lifecycle, TLS policy, SQL behavior and regression tests are ready.
 | Engine | Vault and process-bound IPC | Native managed SQL | Automatic lab lifecycle | Production managed mode |
 | --- | --- | --- | --- | --- |
 | PostgreSQL | Implemented and SQL-tested | Simple-query broker; real SELECT 1 | Implemented behind explicit local/testing opt-in | Disabled |
-| MySQL / MariaDB | Shared foundation available; no native SQL proof yet | Not implemented | Refused before launch | Disabled |
+| MySQL / MariaDB | Implemented with the shared process-bound worker | Verified TLS, native auth and COM_QUERY text results; real SELECT 1 | Same explicit local/testing launcher | Disabled |
 | MSSQL / SQL Server | Shared foundation available; no native SQL proof yet | Not implemented | Refused before launch | Disabled |
 
 The shared parts are encrypted resource credentials, session-scoped temporary
@@ -15,13 +15,11 @@ logins, the authenticated Unix worker, PID/start-tick binding, one-time bootstra
 private launcher pipes and readiness/activation ordering. Each native adapter
 must still use those checks throughout the SQL session.
 
-Next engine work is MySQL/MariaDB native handshake, verified TLS, frontend
-session credential validation, backend authentication (including the selected
-MySQL password plugin) and query/result forwarding. It needs isolated MySQL and
-MariaDB SELECT 1 tests plus wrong password, replay, expiry and revocation tests.
-MSSQL separately needs TDS PRELOGIN/TLS, LOGIN7, native backend authentication and
-SQL batch/result handling with the same isolated SQL and lifecycle checks.
-Neither engine may be routed to PostgreSQL or downgraded to client passthrough.
+MySQL/MariaDB now use their own native adapter and isolated MySQL 8.4/MariaDB
+11.4 SQL tests; see [MySQL/MariaDB lab details](MYSQL_MARIADB_VAULT_SQL_E2E.md).
+MSSQL remains the next required native adapter: TDS PRELOGIN/TLS, LOGIN7, backend
+authentication and SQL batch/result handling, with the same SQL/lifecycle tests.
+It must never be routed to another engine or downgraded to client passthrough.
 
 ## PostgreSQL automatic laboratory launch
 

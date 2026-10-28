@@ -17,19 +17,21 @@ final class LabManagedBrokerLifecycleService extends DbGatewayLifecycleService
             throw new RuntimeException('Managed laboratory broker is disabled in this environment.');
         }
         $session->loadMissing('resource');
-        // Never register an engine merely because it supports passthrough.
-        // MySQL/MariaDB and MSSQL need their native adapters and SQL E2E first.
-        if (! in_array($session->resource?->engine, ['postgresql', 'postgres'], true)) {
-            throw new RuntimeException('Managed laboratory broker is not implemented for this engine.');
-        }
-        $binary = realpath((string) config('sag.db_gateway.managed_lab.postgresql_binary'));
+        $engine = $session->resource?->engine === 'postgres' ? 'postgresql' : $session->resource?->engine;
+        $adapter = match ($engine) {
+            'postgresql' => 'postgresql',
+            'mysql', 'mariadb' => 'mysql',
+            default => throw new RuntimeException('Managed laboratory broker is not implemented for this engine.'),
+        };
+        $binary = realpath((string) config('sag.db_gateway.managed_lab.'.$adapter.'_binary'));
+        $backendCa = (string) config('sag.db_gateway.managed_lab.mysql_ca');
         $socket = (string) config('sag.db_gateway.managed_lab.socket');
         $cert = (string) config('sag.db_gateway.managed_lab.cert');
         $key = (string) config('sag.db_gateway.managed_lab.key');
         $token = (string) config('sag.internal_token');
         $control = (string) config('sag.db_gateway.control_plane_url');
         $workerUid = config('sag.db_gateway.managed_lab.worker_uid') ?? posix_geteuid();
-        if ($binary === false || ! is_executable($binary) || ! is_readable($cert) || ! is_readable($key)
+        if (($adapter === 'mysql' && ! is_readable($backendCa)) || $binary === false || ! is_file($binary) || ! is_executable($binary) || ! is_readable($cert) || ! is_readable($key)
             || @filetype($socket) !== 'socket' || $token === '' || strtoupper($token) === 'CHANGE_ME'
             || ! ctype_digit((string) $workerUid) || (float) $workerUid > 4294967295
             || ! in_array(parse_url($control, PHP_URL_HOST), ['127.0.0.1', 'localhost', '::1'], true)) {
@@ -40,19 +42,19 @@ final class LabManagedBrokerLifecycleService extends DbGatewayLifecycleService
             || (fileperms($logDir) & 0077) !== 0 || fileowner($logDir) !== posix_geteuid()) {
             throw new RuntimeException('Managed laboratory log directory must be private.');
         }
-        $session = DB::transaction(function () use ($session, $logDir): DbAccessSession {
+        $session = DB::transaction(function () use ($session, $logDir, $engine, $adapter): DbAccessSession {
             $locked = DbAccessSession::query()->with('resource')->whereKey($session->id)->lockForUpdate()->firstOrFail();
             $this->assertStartable($locked);
             if ($locked->mode !== 'temporary' || $locked->resource->auth_mode !== 'managed'
-                || $locked->resource->target_tls_mode !== 'disable' || empty($locked->resource->target_database)
-                || ! in_array($locked->resource->engine, ['postgresql', 'postgres'], true)
+                || $locked->resource->target_tls_mode !== ($adapter === 'mysql' ? 'verify-full' : 'disable') || empty($locked->resource->target_database)
+                || ($locked->resource->engine === 'postgres' ? 'postgresql' : $locked->resource->engine) !== $engine
                 || ! GatewayTemporaryCredential::query()->where('session_id', $locked->id)->exists()
                 || $this->isProcessRunning((int) data_get($locked->metadata, 'db.gateway_pid', 0))) {
                 throw new RuntimeException('Session is not eligible for managed laboratory launch.');
             }
             $metadata = is_array($locked->metadata) ? $locked->metadata : [];
             $metadata['db'] = array_merge(is_array($metadata['db'] ?? null) ? $metadata['db'] : [], [
-                'managed_lab' => true, 'engine' => 'postgresql', 'gateway_pid' => null,
+                'managed_lab' => true, 'engine' => $engine, 'gateway_pid' => null,
                 'gateway_proc_start_ticks' => null, 'bootstrap_consumed_at' => null,
                 'gateway_log_path' => $logDir.'/session-'.$locked->id.'.log',
             ]);
@@ -71,10 +73,14 @@ final class LabManagedBrokerLifecycleService extends DbGatewayLifecycleService
         try {
             $args = [$binary, '--supervised', '--listen=127.0.0.1:'.$session->gateway_port,
                 '--target='.$this->hostPort($session->resource->target_host, $session->resource->target_port),
-                '--database='.$session->resource->target_database, '--backend-tls=disable', '--control='.$control,
+                '--database='.$session->resource->target_database, '--backend-tls='.$session->resource->target_tls_mode, '--control='.$control,
                 '--ipc-socket='.$socket, '--worker-uid='.(string) $workerUid,
                 '--session='.$session->public_id, '--resource='.(string) $session->resource_id,
                 '--cert='.$cert, '--key='.$key];
+            if ($adapter === 'mysql') {
+                $args[] = '--backend-ca='.$backendCa;
+                $args[] = '--engine='.$engine;
+            }
             // Inherit only transport/locale variables. The broker must not get
             // Laravel DB passwords, Vault encryption keys or the internal token.
             $env = ['SAG_DB_SESSION_UID' => $session->public_id];
@@ -116,7 +122,7 @@ final class LabManagedBrokerLifecycleService extends DbGatewayLifecycleService
             });
             $bound = true;
             $phase = 'bootstrap';
-            $frame = json_encode(['operation' => 'launch', 'engine' => 'postgresql',
+            $frame = json_encode(['operation' => 'launch', 'engine' => $engine,
                 'session_uid' => $session->public_id, 'resource_id' => (int) $session->resource_id,
                 'internal_token' => $token], JSON_THROW_ON_ERROR)."\n";
             if (strlen($frame) > 8192 || fwrite($pipes[0], $frame) !== strlen($frame)) {
@@ -125,7 +131,7 @@ final class LabManagedBrokerLifecycleService extends DbGatewayLifecycleService
             $phase = 'backend_ready';
             stream_set_timeout($pipes[3], 25);
             $ready = json_decode((string) fgets($pipes[3], 1025), true, 8, JSON_THROW_ON_ERROR);
-            if (($ready['phase'] ?? null) !== 'backend_authenticated' || ($ready['engine'] ?? null) !== 'postgresql'
+            if (($ready['phase'] ?? null) !== 'backend_authenticated' || ($ready['engine'] ?? null) !== $engine
                 || ($ready['session_uid'] ?? null) !== $session->public_id
                 || ($ready['resource_id'] ?? null) !== (int) $session->resource_id) {
                 throw new RuntimeException('backend not ready');
@@ -140,13 +146,13 @@ final class LabManagedBrokerLifecycleService extends DbGatewayLifecycleService
                 }
                 $locked->forceFill(['status' => 'started', 'started_at' => now(), 'last_activity_at' => now()])->save();
             });
-            $activate = json_encode(['operation' => 'activate', 'engine' => 'postgresql',
+            $activate = json_encode(['operation' => 'activate', 'engine' => $engine,
                 'session_uid' => $session->public_id, 'resource_id' => $session->resource_id], JSON_THROW_ON_ERROR)."\n";
             if (fwrite($pipes[0], $activate) !== strlen($activate)) {
                 throw new RuntimeException('activation failed');
             }
             $session->refresh();
-            $this->writeAudit($session, null, 'access.db.gateway.managed_lab.started', 'info', ['gateway_pid' => $pid, 'engine' => 'postgresql']);
+            $this->writeAudit($session, null, 'access.db.gateway.managed_lab.started', 'info', ['gateway_pid' => $pid, 'engine' => $engine]);
             // Releasing a proc_open handle is non-blocking; proc_close would wait
             // for this long-lived child. Existing lifecycle owns later termination.
             unset($process);

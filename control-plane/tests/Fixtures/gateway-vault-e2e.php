@@ -20,7 +20,7 @@ if (app()->environment() !== 'testing' || config('database.default') !== 'sqlite
 $input = json_decode(stream_get_contents(STDIN), true, 512, JSON_THROW_ON_ERROR);
 if (isset($input['launcher'])) {
     $lab = $input['launcher'];
-    config()->set('sag.db_gateway.managed_lab', ['enabled' => true, 'postgresql_binary' => $lab['binary'],
+    config()->set('sag.db_gateway.managed_lab', ['enabled' => true, 'postgresql_binary' => $lab['binary'], 'mysql_binary' => $lab['binary'], 'mysql_ca' => $lab['backend_ca'] ?? '',
         'socket' => $lab['socket'], 'cert' => $lab['cert'], 'key' => $lab['key'], 'worker_uid' => $lab['worker_uid']]);
     config()->set('sag.db_gateway.log_dir', $lab['log_dir']);
     config()->set('sag.db_gateway.control_plane_url', $lab['control']);
@@ -32,10 +32,10 @@ if ($input['action'] === 'setup') {
     Artisan::call('migrate:fresh', ['--force' => true]);
     $user = User::factory()->create();
     $resource = DatabaseResource::query()->create([
-        'name' => 'isolated E2E', 'engine' => 'postgresql', 'target_host' => $input['target_host'] ?? 'postgres',
+        'name' => 'isolated E2E', 'engine' => $input['engine'] ?? 'postgresql', 'target_host' => $input['target_host'] ?? 'postgres',
         'auth_mode' => ($input['managed'] ?? false) ? 'managed' : 'client_passthrough',
-        'target_tls_mode' => 'disable',
-        'target_port' => $input['target_port'] ?? 5432, 'target_database' => 'sag_e2e', 'is_active' => true,
+        'target_tls_mode' => $input['tls_mode'] ?? 'disable',
+        'target_port' => $input['target_port'] ?? 5432, 'target_database' => $input['database'] ?? 'sag_e2e', 'is_active' => true,
         'created_by_user_id' => $user->id,
     ]);
     $session = DbAccessSession::query()->create([
@@ -44,7 +44,7 @@ if ($input['action'] === 'setup') {
         'expires_at' => now()->addHour(),
     ]);
     app(ResourceCredentialVault::class)->replace(
-        $resource->id, 'ipc_e2e_backend', $input['password'], $user->id
+        $resource->id, $input['backend_username'] ?? 'ipc_e2e_backend', $input['password'], $user->id
     );
     $temporary = app(TemporaryGatewayCredentials::class)->issue($session);
     if (! ($input['managed'] ?? false)) {

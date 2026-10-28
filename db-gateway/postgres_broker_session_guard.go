@@ -13,6 +13,10 @@ import (
 // checkBrokerSessionActive fails closed on unexpected responses and requires
 // started status (the legacy endpoint also permits created/starting).
 func checkBrokerSessionActive(ctx context.Context, client *http.Client, controlURL, token, sessionUID string, localChecks ...func(context.Context) bool) bool {
+	return checkBrokerEngineSessionActive(ctx, client, controlURL, token, sessionUID, "postgresql", localChecks...)
+}
+
+func checkBrokerEngineSessionActive(ctx context.Context, client *http.Client, controlURL, token, sessionUID, engine string, localChecks ...func(context.Context) bool) bool {
 	if ctx == nil || ctx.Err() != nil || token == "" || sessionUID == "" || controlURL == "" {
 		return false
 	}
@@ -48,13 +52,19 @@ func checkBrokerSessionActive(ctx context.Context, client *http.Client, controlU
 	if json.NewDecoder(http.MaxBytesReader(nil, resp.Body, 4096)).Decode(&result) != nil {
 		return false
 	}
-	return result.OK && result.Allowed && result.SessionStatus == "started" && strings.EqualFold(result.Engine, "postgresql")
+	expected, e := normalizeBrokerEngine(engine)
+	actual, a := normalizeBrokerEngine(result.Engine)
+	return e == nil && a == nil && expected == actual && result.OK && result.Allowed && result.SessionStatus == "started"
 }
 
 // watchBrokerSession closes BOTH ends of an existing connection when a session
 // expires, is revoked, or becomes unverifiable. The caller must also check
 // authorization immediately before forwarding each query.
 func watchBrokerSession(ctx context.Context, client *http.Client, controlURL, token, sessionUID string, frontend, backend net.Conn, localChecks ...func(context.Context) bool) func() {
+	return watchBrokerEngineSession(ctx, client, controlURL, token, sessionUID, "postgresql", frontend, backend, localChecks...)
+}
+
+func watchBrokerEngineSession(ctx context.Context, client *http.Client, controlURL, token, sessionUID, engine string, frontend, backend net.Conn, localChecks ...func(context.Context) bool) func() {
 	stop := make(chan struct{})
 	done := make(chan struct{})
 	go func() {
@@ -71,7 +81,7 @@ func watchBrokerSession(ctx context.Context, client *http.Client, controlURL, to
 				return
 			case <-ticker.C:
 				checkCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-				ok := checkBrokerSessionActive(checkCtx, client, controlURL, token, sessionUID, localChecks...)
+				ok := checkBrokerEngineSessionActive(checkCtx, client, controlURL, token, sessionUID, engine, localChecks...)
 				cancel()
 				if !ok {
 					_ = frontend.Close()

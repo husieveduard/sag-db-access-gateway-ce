@@ -56,10 +56,10 @@ final class ManagedBrokerLaunchTest extends TestCase
         $this->assertSame('created', $session->fresh()->status);
     }
 
-    public function test_mysql_mariadb_and_mssql_never_fall_back_to_postgres_or_passthrough(): void
+    public function test_mssql_never_falls_back_to_another_adapter_or_passthrough(): void
     {
         config()->set('sag.db_gateway.managed_lab.enabled', true);
-        foreach (['mysql', 'mariadb', 'mssql', 'sqlserver'] as $engine) {
+        foreach (['mssql', 'sqlserver'] as $engine) {
             $session = $this->makeLaunchSession($engine);
             try {
                 app(LabManagedBrokerLifecycleService::class)->start($session);
@@ -69,6 +69,22 @@ final class ManagedBrokerLaunchTest extends TestCase
             }
             $this->assertSame('created', $session->fresh()->status);
             $this->assertNull($session->fresh()->gateway_port);
+        }
+    }
+
+    public function test_mysql_requires_its_own_binary_and_verified_backend_ca(): void
+    {
+        config()->set('sag.db_gateway.managed_lab.enabled', true);
+        config()->set('sag.db_gateway.managed_lab.postgresql_binary', '/bin/false');
+        foreach (['mysql', 'mariadb'] as $engine) {
+            $session = $this->makeLaunchSession($engine);
+            try {
+                app(LabManagedBrokerLifecycleService::class)->start($session);
+                $this->fail('MySQL fell back to PostgreSQL adapter.');
+            } catch (RuntimeException $e) {
+                $this->assertSame('Managed laboratory broker configuration is invalid.', $e->getMessage());
+            }
+            $this->assertSame('created', $session->fresh()->status);
         }
     }
 }

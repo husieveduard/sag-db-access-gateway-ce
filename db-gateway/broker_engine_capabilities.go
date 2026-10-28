@@ -18,7 +18,8 @@ const (
 var errUnknownBrokerEngine = errors.New("unknown database engine")
 var errBrokerEngineNotImplemented = errors.New("temporary-credential broker not implemented for database engine")
 
-// BrokerCapability records what has been proven implemented, not merely planned.
+// BrokerCapability describes the production listener. Separately built laboratory
+// adapters do not enable this runtime gate, even after their isolated SQL tests.
 type BrokerCapability struct {
     Engine BrokerEngine
     Passthrough bool
@@ -54,8 +55,8 @@ func brokerCapability(value string) (BrokerCapability, error) {
     }
 }
 
-// TemporaryBroker remains disabled for every engine until the native broker,
-// vault transport, and lifecycle are integrated and verified.
+// TemporaryBroker remains disabled in the production listener. Native laboratory
+// PostgreSQL/MySQL adapters are selected only by the explicit local/testing launcher.
 // This gate must only change when the native protocol implementation and
 // secret transport have regression coverage. Never route unsupported
 // temporary credentials into client passthrough.
