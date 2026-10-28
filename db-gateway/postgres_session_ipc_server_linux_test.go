@@ -68,3 +68,27 @@ func TestPGIPCPeerProcessIdentityFromKernel(t *testing.T) {
  if _,err:=pgIPCPeerProcessStartTicks(0);err==nil{t.Fatal("invalid process accepted")}
  if _,err:=pgIPCPeerProcessStartTicks(-1);err==nil{t.Fatal("negative process accepted")}
 }
+
+func TestPGIPCBootstrapOperationIsExplicit(t *testing.T) {
+ path:=filepath.Join(t.TempDir(),"bootstrap.sock")
+ ctx,cancel:=context.WithCancel(context.Background())
+ done:=make(chan error,1)
+ go func(){done<-pgIPCServeAuthorization(ctx,path,uint32(os.Getuid()),func(ctx context.Context,_ string,_ int64)bool{
+  consume,_:=ctx.Value(pgIPCBootstrapConsumeKey{}).(bool)
+  return consume
+ })}()
+ defer func(){cancel();<-done}()
+ for i:=0;i<100;i++{if _,err:=os.Stat(path);err==nil{break};time.Sleep(5*time.Millisecond)}
+ send:=func(operation string)bool{
+  conn,err:=net.DialTimeout("unix",path,time.Second);if err!=nil{t.Fatal(err)}
+  defer conn.Close()
+  _=conn.SetDeadline(time.Now().Add(time.Second))
+  if err:=json.NewEncoder(conn).Encode(map[string]any{"session_uid":"SAG-TEST","resource_id":7,"operation":operation});err!=nil{t.Fatal(err)}
+  var reply struct{Allowed bool `json:"allowed"`}
+  if err:=json.NewDecoder(conn).Decode(&reply);err!=nil{return false}
+  return reply.Allowed
+ }
+ if send("authorize"){t.Fatal("read-only authorization consumed bootstrap")}
+ if !send("consume_bootstrap"){t.Fatal("explicit bootstrap operation rejected")}
+ if send("unknown"){t.Fatal("unknown operation accepted")}
+}
