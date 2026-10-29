@@ -32,8 +32,8 @@ func tdsReadMessage(r io.Reader, expected byte, limit int, allowReset bool) ([]b
 			allowed |= 8
 			reset = h[1]&8 != 0
 		}
-		// SQL Server uses packet id zero for its TLS handshake envelope.
-		if expected == 0 && len(result) == 0 && h[6] == 0 {
+		// SQL Server uses packet id zero for server replies and TLS envelopes.
+		if (expected == 0 || expected == 4) && len(result) == 0 && h[6] == 0 {
 			seq = 0
 		}
 		n := int(binary.BigEndian.Uint16(h[2:4]))
