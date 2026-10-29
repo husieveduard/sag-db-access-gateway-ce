@@ -59,7 +59,9 @@ func main() {
 	if e != nil {
 		tdsFatal()
 	}
-	probe, e := tdsBackendConnect(ctx, *target, backendTLS, credentials.Username, credentials.Password, *database)
+	probeCtx, stopProbe := context.WithTimeout(context.Background(), 15*time.Second)
+	probe, e := tdsBackendConnect(probeCtx, *target, backendTLS, credentials.Username, credentials.Password, *database)
+	stopProbe()
 	if e != nil {
 		tdsFatal()
 	}
