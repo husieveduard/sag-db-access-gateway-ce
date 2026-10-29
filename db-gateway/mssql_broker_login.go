@@ -182,7 +182,7 @@ func tdsBackendConnect(ctx context.Context, address string, config *tls.Config, 
 	}
 	p, e = tdsRead(secure, 4, 65536)
 	if e != nil {
-		return nil, fmt.Errorf("backend LOGIN7 frame: %w", errTDSProtocol)
+		return nil, fmt.Errorf("backend LOGIN7 frame: %w", e)
 	}
 	if !tdsAcceptLogin(p) {
 		return nil, fmt.Errorf("backend LOGIN7 response: %w", errTDSProtocol)

@@ -161,3 +161,21 @@ func TestTDSFrontendDeniesPlaintextAndMissingLocalAuthorization(t *testing.T) {
 		t.Fatal("missing local authorization allowed")
 	}
 }
+
+// A TLS transport turns each Write into a record. SQL Server needs a complete
+// TDS packet, including its header, in that record.
+type tdsAtomicPacketWriter struct{ packets int }
+
+func (w *tdsAtomicPacketWriter) Write(p []byte) (int, error) {
+	if len(p) < 9 || int(binary.BigEndian.Uint16(p[2:])) != len(p) {
+		return 0, errTDSProtocol
+	}
+	w.packets++
+	return len(p), nil
+}
+func TestTDSEncryptedPacketIsOneWrite(t *testing.T) {
+	w := &tdsAtomicPacketWriter{}
+	if tdsWrite(w, 16, bytes.Repeat([]byte{1}, 10000)) != nil || w.packets != 3 {
+		t.Fatal("TDS header and payload were split into separate TLS records")
+	}
+}

@@ -72,15 +72,19 @@ func tdsWriteMessage(w io.Writer, kind byte, p []byte, reset bool) error {
 			h[1] |= 1
 		}
 		binary.BigEndian.PutUint16(h[2:], uint16(n+8))
-		for _, b := range [][]byte{h, p[:n]} {
-			for len(b) > 0 {
-				k, e := w.Write(b)
-				if e != nil || k <= 0 {
-					return errTDSProtocol
-				}
-				b = b[k:]
+		// SQL Server expects each encrypted TDS packet as one TLS write.
+		// Splitting header/payload into separate records can abort LOGIN7.
+		frame := make([]byte, n+8)
+		copy(frame, h)
+		copy(frame[8:], p[:n])
+		for len(frame) > 0 {
+			k, e := w.Write(frame)
+			if e != nil || k <= 0 {
+				return errTDSProtocol
 			}
+			frame = frame[k:]
 		}
+
 		p = p[n:]
 		seq++
 	}
