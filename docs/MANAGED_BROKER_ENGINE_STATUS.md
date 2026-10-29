@@ -81,8 +81,9 @@ php artisan sag:db-start-session SESSION --managed-lab
 With the same local/testing opt-in enabled, the normal lifecycle start also
 routes temporary managed sessions to this native launcher. This lets queued
 application operations use the verified bootstrap path. The isolated SQL E2E
-fixture exercises the normal lifecycle start for all three adapters. Production
-still refuses managed mode until a separately packaged, tested runtime is ready.
+fixture exercises the normal lifecycle start for all three adapters. The
+default deployment keeps managed mode disabled; the staging candidate enables
+it only through the explicit runtime flag and certificate mounts.
 
 It requires Linux, APP_ENV=local/testing and SAG_LAB_MANAGED_BROKER_ENABLED=true.
 Configure SAG_LAB_POSTGRES_BROKER_BINARY, SAG_LAB_VAULT_SOCKET,
@@ -118,8 +119,8 @@ lab adapter with scripts/build-postgres-lab-broker.sh /absolute/output/path and 
 SAG_E2E_BROKER_BINARY to that executable to include the managed-launch cases.
 
 Shared idle process cleanup, concurrent IPC and PID namespace compatibility are
-covered in [IPC/lifetime hardening](IPC_LIFECYCLE_HARDENING.md). Production gates
-remain disabled.
+covered in [IPC/lifetime hardening](IPC_LIFECYCLE_HARDENING.md). The default
+deployment keeps the managed runtime disabled.
 
 PostgreSQL prepared/parameterized wire support and its limits are described in
 [extended protocol SQL E2E](POSTGRES_EXTENDED_SQL_E2E.md).
