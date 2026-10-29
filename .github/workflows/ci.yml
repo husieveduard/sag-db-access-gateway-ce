@@ -286,7 +286,7 @@ jobs:
         run: |
           export SAG_E2E_MYSQL_CA="$GITHUB_WORKSPACE/.work/mysql-lab-tls/ca.crt"
           ../scripts/build-mysql-lab-broker.sh /tmp/sag-mysql-broker-ci
-          go test -v -run '^TestMySQLMariaDBVaultSQL$' -count=1 -timeout=5m ./...
+          go test -v -run '^TestMySQLMariaDBVaultSQL$' -count=1 -timeout=8m ./...
       - name: Remove disposable databases
         if: always()
         run: |

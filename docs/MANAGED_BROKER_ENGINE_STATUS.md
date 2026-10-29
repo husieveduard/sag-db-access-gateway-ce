@@ -7,7 +7,7 @@ launch lifecycle, TLS policy, SQL behavior and regression tests are ready.
 | Engine | Vault and process-bound IPC | Native managed SQL | Automatic lab lifecycle | Production managed mode |
 | --- | --- | --- | --- | --- |
 | PostgreSQL | Implemented and SQL-tested | Simple-query broker; real SELECT 1 | Implemented behind explicit local/testing opt-in | Disabled |
-| MySQL / MariaDB | Implemented with the shared process-bound worker | Verified TLS, native auth and COM_QUERY text results; real SELECT 1 | Same explicit local/testing launcher | Disabled |
+| MySQL / MariaDB | Implemented with the shared process-bound worker | Verified TLS, native auth, COM_QUERY and bounded native prepared/binary results; real SELECT 1 | Same explicit local/testing launcher | Disabled |
 | MSSQL / SQL Server | Shared process-bound worker | Native TDS 7.4, verified TLS, SQL authentication and SQLBatch; real SELECT 1 and lifecycle E2E passed | Same explicit local/testing launcher | Disabled |
 
 The shared parts are encrypted resource credentials, session-scoped temporary

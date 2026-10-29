@@ -69,7 +69,7 @@ func myFrontend(ctx context.Context, raw net.Conn, config *tls.Config, database 
 	return secure, nil
 }
 
-// Only COM_QUERY text results and COM_QUIT. Both independent HTTP and
+// Text and prepared binary commands require both independent HTTP and
 // kernel/process-bound local authorization remain required throughout.
 func myServeSession(ctx context.Context, raw net.Conn, frontendTLS, backendTLS *tls.Config, client *http.Client, control, token, session, engine, database, target string, vault func(context.Context) (BrokerBackendCredential, error), local func(context.Context) bool) error {
 	if raw == nil {
@@ -105,6 +105,7 @@ func myServeSession(ctx context.Context, raw net.Conn, frontendTLS, backendTLS *
 	if myWrite(front, &seq, []byte{0, 0, 0, 2, 0, 0, 0}) != nil {
 		return errMyProtocol
 	}
+	statements := make(map[uint32]*myPreparedStatement)
 	for {
 		front.SetReadDeadline(time.Now().Add(30 * time.Second))
 		seq = 0
@@ -115,7 +116,33 @@ func myServeSession(ctx context.Context, raw net.Conn, frontendTLS, backendTLS *
 		if p[0] == 1 && len(p) == 1 {
 			return nil
 		}
-		if p[0] != 3 || len(p) < 2 {
+		var statement *myPreparedStatement
+		switch p[0] {
+		case 3:
+			if len(p) < 2 {
+				return errMyProtocol
+			}
+		case 0x16:
+			if len(p) < 2 || len(statements) >= myMaxStatements {
+				return errMyProtocol
+			}
+		case 0x17, 0x19, 0x1a:
+			id, ok := myStatementID(p)
+			if !ok {
+				return errMyProtocol
+			}
+			statement = statements[id]
+			if statement == nil {
+				return errMyProtocol
+			}
+			if p[0] == 0x17 {
+				if !myValidateExecute(p, statement) {
+					return errMyProtocol
+				}
+			} else if len(p) != 5 {
+				return errMyProtocol
+			}
+		default:
 			return errMyProtocol
 		}
 		if !checkBrokerEngineSessionActive(ctx, client, control, token, session, engine, local) {
@@ -124,8 +151,35 @@ func myServeSession(ctx context.Context, raw net.Conn, frontendTLS, backendTLS *
 		backend.SetDeadline(time.Now().Add(30 * time.Second))
 		front.SetWriteDeadline(time.Now().Add(30 * time.Second))
 		seq = 0
-		if myWrite(backend, &seq, p) != nil || myRelayResult(backend, front) != nil {
+		if myWrite(backend, &seq, p) != nil {
 			return errMyProtocol
+		}
+		switch p[0] {
+		case 3:
+			if myRelayResult(backend, front) != nil {
+				return errMyProtocol
+			}
+		case 0x16:
+			prepared, e := myRelayPrepare(backend, front)
+			if e != nil {
+				return e
+			}
+			if prepared != nil {
+				if statements[prepared.id] != nil {
+					return errMyProtocol
+				}
+				statements[prepared.id] = prepared
+			}
+		case 0x17:
+			if myRelayRows(backend, front, true) != nil {
+				return errMyProtocol
+			}
+		case 0x19:
+			delete(statements, statement.id) // CLOSE has no server response.
+		case 0x1a:
+			if myRelayStatementReset(backend, front) != nil {
+				return errMyProtocol
+			}
 		}
 	}
 }

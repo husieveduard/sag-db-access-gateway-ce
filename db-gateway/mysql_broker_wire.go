@@ -183,15 +183,26 @@ func myStatus(p []byte) error {
 	return nil
 }
 
-// Text results only: no LOCAL INFILE, multiple results, prepared statements or
-// session identity changes. Validate the full framing before each packet relay.
+// Validate framing and row encoding for text and prepared binary results.
+// LOCAL INFILE and multiple results remain forbidden.
 func myRelayResult(backend net.Conn, frontend io.Writer) error {
+	return myRelayRows(backend, frontend, false)
+}
+func myRelayRows(backend net.Conn, frontend io.Writer, binaryRows bool) error {
 	seq := byte(1)
 	p, e := myRead(backend, &seq)
 	if e != nil {
 		return e
 	}
-	relay := func(p []byte) error { s := seq - 1; return myWrite(frontend, &s, p) }
+	total := 0
+	relay := func(p []byte) error {
+		total += len(p)
+		if total > 64*1024*1024 {
+			return errMyProtocol
+		}
+		s := seq - 1
+		return myWrite(frontend, &s, p)
+	}
 	if p[0] == 0xff {
 		return relay(p)
 	}
@@ -208,11 +219,20 @@ func myRelayResult(backend net.Conn, frontend io.Writer) error {
 	if relay(p) != nil {
 		return errMyProtocol
 	}
+	types := make([]byte, 0, int(count))
 	for i := uint64(0); i < count; i++ {
 		p, e = myRead(backend, &seq)
 		if e != nil || p[0] == 0xfb {
 			return errMyProtocol
 		}
+		kind, e := myColumnType(p)
+		if e != nil {
+			return e
+		}
+		if binaryRows && !myParameterTypeAllowed(kind, 0) {
+			return errMyProtocol
+		}
+		types = append(types, kind)
 		if relay(p) != nil {
 			return errMyProtocol
 		}
@@ -224,15 +244,10 @@ func myRelayResult(backend net.Conn, frontend io.Writer) error {
 	if relay(p) != nil {
 		return errMyProtocol
 	}
-	total := 0
 	for i := 0; i < 100000; i++ {
 		p, e = myRead(backend, &seq)
 		if e != nil {
 			return e
-		}
-		total += len(p)
-		if total > 64*1024*1024 {
-			return errMyProtocol
 		}
 		if p[0] == 0xff {
 			return relay(p)
@@ -242,6 +257,15 @@ func myRelayResult(backend net.Conn, frontend io.Writer) error {
 				return errMyProtocol
 			}
 			return relay(p)
+		}
+		if binaryRows {
+			if !myValidateBinaryRow(p, types) {
+				return errMyProtocol
+			}
+			if relay(p) != nil {
+				return errMyProtocol
+			}
+			continue
 		}
 		r := p
 		for col := uint64(0); col < count; col++ {

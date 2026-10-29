@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"database/sql"
 	"encoding/base64"
+	wirebinary "encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
@@ -81,7 +82,7 @@ func TestMySQLMariaDBVaultSQL(t *testing.T) {
 			if target == "" {
 				t.Skip("set isolated MySQL/MariaDB endpoint")
 			}
-			for _, scenario := range []string{"revoke", "expire", "deactivate", "replace_ticks", "worker_lost", "idle_revoke", "idle_worker_lost", "pending_revoke", "unsupported_command", "bad_secret", "startup_revoke"} {
+			for _, scenario := range []string{"revoke", "expire", "deactivate", "replace_ticks", "worker_lost", "idle_revoke", "idle_worker_lost", "pending_revoke", "unsupported_command", "closed_statement", "prepared_revoke", "prepared_worker_lost", "bad_secret", "startup_revoke"} {
 				t.Run(scenario, func(t *testing.T) { myVaultScenario(t, engine, target, scenario) })
 			}
 		})
@@ -393,7 +394,8 @@ func myVaultScenario(t *testing.T, engine, target, scenario string) {
 	clientConfig.DBName = "sag_mysql_e2e"
 	clientConfig.TLSConfig = tlsName
 	clientConfig.AllowCleartextPasswords = true
-	clientConfig.InterpolateParams = true
+	clientConfig.InterpolateParams = false
+	clientConfig.ParseTime = true
 	clientConfig.Timeout = 5 * time.Second
 	clientConfig.ReadTimeout = 10 * time.Second
 	independent, e := sql.Open("mysql", clientConfig.FormatDSN())
@@ -425,6 +427,43 @@ func myVaultScenario(t *testing.T, engine, target, scenario string) {
 			t.Fatal("allowed write did not reach real database")
 		}
 		query(admin, "DELETE FROM guard_probe")
+		myExercisePreparedClient(t, independent)
+		if rows := query(admin, "SELECT count(*) FROM guard_probe"); len(rows) != 1 || rows[0][0] != "1" {
+			independent.Close()
+			t.Fatal("prepared write did not reach the real backend")
+		}
+		query(admin, "DELETE FROM guard_probe")
+	}
+	if scenario == "prepared_revoke" || scenario == "prepared_worker_lost" {
+		defer independent.Close()
+		ctx, cancel := context.WithTimeout(context.Background(), 7*time.Second)
+		defer cancel()
+		stmt, err := independent.PrepareContext(ctx, "INSERT INTO guard_probe VALUES (?)")
+		if err != nil {
+			t.Fatal("prepare before invalidation failed")
+		}
+		defer stmt.Close()
+		if scenario == "prepared_revoke" {
+			fixture(map[string]any{"action": "revoke"})
+		} else {
+			stopWorker()
+			if !checkBrokerEngineSessionActive(context.Background(), nil, "http://"+controlAddress, "mysql-internal-only", "SAG-IPC-E2E", engine) {
+				t.Fatal("worker loss accidentally revoked HTTP")
+			}
+		}
+		if _, err = stmt.ExecContext(ctx, 99); err == nil {
+			t.Fatal("invalidated prepared statement executed")
+		}
+		assertManagedBrokerExited(t, launch.PID, frontAddress)
+		if rows := query(admin, "SELECT count(*) FROM guard_probe"); len(rows) != 1 || rows[0][0] != "0" {
+			t.Fatal("revoked prepared write reached backend")
+		}
+		rows := query(admin, "SELECT count(*) FROM information_schema.processlist WHERE USER='sag_e2e_backend'")
+		if len(rows) != 1 || rows[0][0] != "0" {
+			t.Fatal("prepared invalidation retained backend session")
+		}
+		t.Log("prepared EXECUTE denied after invalidation; both endpoints and process stopped")
+		return
 	}
 	independent.Close()
 	if e != nil || oneValue != 1 {
@@ -440,9 +479,33 @@ func myVaultScenario(t *testing.T, engine, target, scenario string) {
 		t.Fatal("SELECT 1 mismatch")
 	}
 	t.Log(engine + " " + expected + ": Vault -> native broker -> verified TLS SQL SELECT 1 = 1")
-	if scenario == "unsupported_command" {
+	if scenario == "closed_statement" {
 		seq := byte(0)
-		myWrite(front, &seq, append([]byte{0x16}, []byte("SELECT 1")...))
+		myWrite(front, &seq, append([]byte{0x16}, []byte("SELECT ?")...))
+		var metadata bytes.Buffer
+		prepared, err := myRelayPrepare(front, &metadata)
+		if err != nil || prepared == nil {
+			t.Fatal("native prepare failed")
+		}
+		myNativePreparedInteger(t, front, myTestExecute(prepared.id, []byte{0, 1, 3, 0, 42, 0, 0, 0}), 42)
+		resetPacket := []byte{0x1a, 0, 0, 0, 0}
+		wirebinary.LittleEndian.PutUint32(resetPacket[1:], prepared.id)
+		seq = 0
+		myWrite(front, &seq, resetPacket)
+		var resetReply bytes.Buffer
+		if myRelayStatementReset(front, &resetReply) != nil {
+			t.Fatal("native statement RESET failed")
+		}
+		myNativePreparedInteger(t, front, myTestExecute(prepared.id, []byte{0, 0, 43, 0, 0, 0}), 43)
+		closePacket := []byte{0x19, 0, 0, 0, 0}
+		wirebinary.LittleEndian.PutUint32(closePacket[1:], prepared.id)
+		seq = 0
+		myWrite(front, &seq, closePacket)
+		seq = 0
+		myWrite(front, &seq, myTestExecute(prepared.id, []byte{0, 1, 3, 0, 99, 0, 0, 0}))
+	} else if scenario == "unsupported_command" {
+		seq := byte(0)
+		myWrite(front, &seq, []byte{0x1c, 1, 0, 0, 0, 1, 0, 0, 0})
 	} else if scenario == "worker_lost" {
 		stopWorker()
 		if !checkBrokerEngineSessionActive(context.Background(), nil, "http://"+controlAddress, "mysql-internal-only", "SAG-IPC-E2E", engine) {
@@ -466,7 +529,7 @@ func myVaultScenario(t *testing.T, engine, target, scenario string) {
 	for i := 0; i < 50; i++ {
 		rows = query(admin, "SELECT count(*) FROM information_schema.processlist WHERE USER='sag_e2e_backend'")
 		if len(rows) == 1 && rows[0][0] == "0" {
-			if scenario != "unsupported_command" {
+			if scenario != "unsupported_command" && scenario != "closed_statement" {
 				assertManagedBrokerExited(t, launch.PID, frontAddress)
 			}
 			t.Log("both native SQL endpoints closed: " + scenario)
