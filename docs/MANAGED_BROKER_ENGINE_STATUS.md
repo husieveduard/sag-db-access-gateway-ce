@@ -8,7 +8,7 @@ launch lifecycle, TLS policy, SQL behavior and regression tests are ready.
 | --- | --- | --- | --- | --- |
 | PostgreSQL | Implemented and SQL-tested | Simple-query broker; real SELECT 1 | Implemented behind explicit local/testing opt-in | Disabled |
 | MySQL / MariaDB | Implemented with the shared process-bound worker | Verified TLS, native auth and COM_QUERY text results; real SELECT 1 | Same explicit local/testing launcher | Disabled |
-| MSSQL / SQL Server | Shared foundation available; no native SQL proof yet | Not implemented | Refused before launch | Disabled |
+| MSSQL / SQL Server | Shared process-bound worker | Native TDS 7.4, verified TLS, SQL authentication and SQLBatch; isolated SQL E2E required | Same explicit local/testing launcher | Disabled |
 
 The shared parts are encrypted resource credentials, session-scoped temporary
 logins, the authenticated Unix worker, PID/start-tick binding, one-time bootstrap,
@@ -17,9 +17,9 @@ must still use those checks throughout the SQL session.
 
 MySQL/MariaDB now use their own native adapter and isolated MySQL 8.4/MariaDB
 11.4 SQL tests; see [MySQL/MariaDB lab details](MYSQL_MARIADB_VAULT_SQL_E2E.md).
-MSSQL remains the next required native adapter: TDS PRELOGIN/TLS, LOGIN7, backend
-authentication and SQL batch/result handling, with the same SQL/lifecycle tests.
-It must never be routed to another engine or downgraded to client passthrough.
+MSSQL now has a separate native TDS laboratory adapter and isolated SQL Server
+2022 CI suite; see [MSSQL lab details](MSSQL_VAULT_SQL_E2E.md). Its limited protocol
+surface does not enable Integrated Authentication, RPC or production managed mode.
 
 ## PostgreSQL automatic laboratory launch
 

@@ -7,7 +7,7 @@
 - The PostgreSQL lab Broker needs a backend credential before backend authentication.
 - The laboratory Unix worker now returns process-bound one-time Vault credentials through FD 3 and the private Unix socket; the lab Broker no longer reads a backend password file.
 - Real PostgreSQL `SELECT 1`, replay rejection, resource/process binding, live revocation/expiry, deactivation, process replacement and IPC worker loss are covered by [the isolated SQL E2E](VAULT_IPC_SQL_E2E.md).
-- Automatic PostgreSQL lab launch now records identity, waits for native backend authentication and activates over private pipes. MySQL/MariaDB now have their native verified-TLS COM_QUERY adapter and shared lab lifecycle. Production rollout and MSSQL remain gated; these PostgreSQL laboratory checks alone do not establish production readiness.
+- Automatic PostgreSQL lab launch now records identity, waits for native backend authentication and activates over private pipes. MySQL/MariaDB now have their native verified-TLS COM_QUERY adapter and shared lab lifecycle. MSSQL now has a separate native TDS laboratory adapter and SQL Server CI suite. Production rollout remains gated; laboratory checks alone do not establish production readiness.
 
 ## Required state transitions
 

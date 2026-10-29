@@ -29,6 +29,8 @@ return [
         // Explicit development/test opt-in. Production always refuses this path.
         'managed_lab' => [
             'enabled' => filter_var(env('SAG_LAB_MANAGED_BROKER_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+            'mssql_binary' => env('SAG_LAB_MSSQL_BROKER_BINARY', ''),
+            'mssql_ca' => env('SAG_LAB_MSSQL_BACKEND_CA', ''),
             'mysql_binary' => env('SAG_LAB_MYSQL_BROKER_BINARY', ''),
             'mysql_ca' => env('SAG_LAB_MYSQL_BACKEND_CA', ''),
             'postgresql_binary' => env('SAG_LAB_POSTGRES_BROKER_BINARY', ''),

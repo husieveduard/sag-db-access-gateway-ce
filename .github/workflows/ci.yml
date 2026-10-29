@@ -277,3 +277,46 @@ jobs:
         run: |
           docker rm -f sag-pr21-mysql sag-pr21-mariadb || true
           docker network rm sag-pr21-mysql-lab || true
+
+  mssql-vault-ipc-sql:
+    name: SQL Server 2022 Vault SQL E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.x'
+          cache-dependency-path: db-gateway/go.sum
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: bcmath, mbstring, pdo_sqlite, zip
+          coverage: none
+      - name: Install Laravel dependencies
+        working-directory: control-plane
+        run: |
+          composer install --no-interaction --prefer-dist --no-progress
+          cp .env.example .env
+          mkdir -p storage/framework/views storage/framework/cache/data storage/framework/sessions bootstrap/cache
+      - name: Start isolated verified-TLS SQL Server Developer
+        env:
+          SAG_LAB_PUBLISH_PORTS: '1'
+        run: ./scripts/start-mssql-lab.sh
+      - name: Build native TDS adapter and verify SQL lifecycle
+        working-directory: db-gateway
+        env:
+          SAG_E2E_MSSQL_TARGET: 127.0.0.1:31433
+          SAG_E2E_MSSQL_BROKER_BINARY: /tmp/sag-mssql-broker-ci
+        run: |
+          export SAG_E2E_MSSQL_CA="$GITHUB_WORKSPACE/.work/mssql-lab-tls/ca.crt"
+          ../scripts/build-mssql-lab-broker.sh /tmp/sag-mssql-broker-ci
+          go test -v -run '^TestMSSQLVaultSQL$' -count=1 -timeout=6m ./...
+      - name: Diagnose isolated database failure
+        if: failure()
+        run: docker logs --tail 60 sag-pr21-mssql || true
+      - name: Remove disposable SQL Server
+        if: always()
+        run: |
+          docker rm -f sag-pr21-mssql || true
+          docker network rm sag-pr21-mssql-lab || true

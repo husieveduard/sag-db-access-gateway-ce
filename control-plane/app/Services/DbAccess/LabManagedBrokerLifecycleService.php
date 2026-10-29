@@ -21,17 +21,18 @@ final class LabManagedBrokerLifecycleService extends DbGatewayLifecycleService
         $adapter = match ($engine) {
             'postgresql' => 'postgresql',
             'mysql', 'mariadb' => 'mysql',
+            'mssql', 'sqlserver' => 'mssql',
             default => throw new RuntimeException('Managed laboratory broker is not implemented for this engine.'),
         };
         $binary = realpath((string) config('sag.db_gateway.managed_lab.'.$adapter.'_binary'));
-        $backendCa = (string) config('sag.db_gateway.managed_lab.mysql_ca');
+        $backendCa = (string) config('sag.db_gateway.managed_lab.'.$adapter.'_ca');
         $socket = (string) config('sag.db_gateway.managed_lab.socket');
         $cert = (string) config('sag.db_gateway.managed_lab.cert');
         $key = (string) config('sag.db_gateway.managed_lab.key');
         $token = (string) config('sag.internal_token');
         $control = (string) config('sag.db_gateway.control_plane_url');
         $workerUid = config('sag.db_gateway.managed_lab.worker_uid') ?? posix_geteuid();
-        if (($adapter === 'mysql' && ! is_readable($backendCa)) || $binary === false || ! is_file($binary) || ! is_executable($binary) || ! is_readable($cert) || ! is_readable($key)
+        if (($adapter !== 'postgresql' && ! is_readable($backendCa)) || $binary === false || ! is_file($binary) || ! is_executable($binary) || ! is_readable($cert) || ! is_readable($key)
             || @filetype($socket) !== 'socket' || $token === '' || strtoupper($token) === 'CHANGE_ME'
             || ! ctype_digit((string) $workerUid) || (float) $workerUid > 4294967295
             || ! in_array(parse_url($control, PHP_URL_HOST), ['127.0.0.1', 'localhost', '::1'], true)) {
@@ -46,7 +47,7 @@ final class LabManagedBrokerLifecycleService extends DbGatewayLifecycleService
             $locked = DbAccessSession::query()->with('resource')->whereKey($session->id)->lockForUpdate()->firstOrFail();
             $this->assertStartable($locked);
             if ($locked->mode !== 'temporary' || $locked->resource->auth_mode !== 'managed'
-                || $locked->resource->target_tls_mode !== ($adapter === 'mysql' ? 'verify-full' : 'disable') || empty($locked->resource->target_database)
+                || $locked->resource->target_tls_mode !== ($adapter !== 'postgresql' ? 'verify-full' : 'disable') || empty($locked->resource->target_database)
                 || ($locked->resource->engine === 'postgres' ? 'postgresql' : $locked->resource->engine) !== $engine
                 || ! GatewayTemporaryCredential::query()->where('session_id', $locked->id)->exists()
                 || $this->isProcessRunning((int) data_get($locked->metadata, 'db.gateway_pid', 0))) {
@@ -77,7 +78,7 @@ final class LabManagedBrokerLifecycleService extends DbGatewayLifecycleService
                 '--ipc-socket='.$socket, '--worker-uid='.(string) $workerUid,
                 '--session='.$session->public_id, '--resource='.(string) $session->resource_id,
                 '--cert='.$cert, '--key='.$key];
-            if ($adapter === 'mysql') {
+            if ($adapter !== 'postgresql') {
                 $args[] = '--backend-ca='.$backendCa;
                 $args[] = '--engine='.$engine;
             }
