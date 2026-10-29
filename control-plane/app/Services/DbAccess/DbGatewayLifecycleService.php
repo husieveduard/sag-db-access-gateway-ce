@@ -21,6 +21,10 @@ class DbGatewayLifecycleService
         if (! $resource->usesPasswordBackendAuthentication()) {
             throw new RuntimeException('Selected backend authentication adapter is not implemented; refusing SQL authentication fallback.');
         }
+        if ($resource->auth_mode === 'managed' && $session->mode === 'temporary'
+            && config('sag.db_gateway.managed_runtime.enabled') === true) {
+            return app(ManagedBrokerLifecycleService::class)->start($session);
+        }
         if ($resource->auth_mode === 'managed'
             && $session->mode === 'temporary'
             && app()->environment('local', 'testing')
@@ -598,10 +602,12 @@ class DbGatewayLifecycleService
      */
     protected function isExpectedGatewayProcess(int $pid, DbAccessSession $session): bool
     {
-        $binaryKey = data_get($session->metadata, 'db.managed_lab') === true && app()->environment('local', 'testing')
-            ? (in_array(data_get($session->metadata, 'db.engine'), ['mysql', 'mariadb'], true)
-                ? 'sag.db_gateway.managed_lab.mysql_binary'
-                : (in_array(data_get($session->metadata, 'db.engine'), ['mssql', 'sqlserver'], true) ? 'sag.db_gateway.managed_lab.mssql_binary' : 'sag.db_gateway.managed_lab.postgresql_binary')) : 'sag.db_gateway.binary';
+        $scope = data_get($session->metadata, 'db.managed_runtime') === true
+            ? 'managed_runtime'
+            : (data_get($session->metadata, 'db.managed_lab') === true && app()->environment('local', 'testing') ? 'managed_lab' : null);
+        $adapter = in_array(data_get($session->metadata, 'db.engine'), ['mysql', 'mariadb'], true)
+            ? 'mysql' : (in_array(data_get($session->metadata, 'db.engine'), ['mssql', 'sqlserver'], true) ? 'mssql' : 'postgresql');
+        $binaryKey = $scope === null ? 'sag.db_gateway.binary' : 'sag.db_gateway.'.$scope.'.'.$adapter.'_binary';
         $binary = realpath((string) config($binaryKey, ''));
         $executable = @readlink('/proc/'.$pid.'/exe');
 

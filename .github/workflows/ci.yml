@@ -290,6 +290,7 @@ jobs:
           SAG_E2E_BROKER_BINARY: /tmp/sag-vault-broker-ci
           SAG_E2E_POSTGRES: 127.0.0.1:35432
           SAG_E2E_POSTGRES_TLS_MODE: verify-full
+          SAG_E2E_USE_RUNTIME: '1'
           SAG_E2E_ADMIN_PASSWORD: isolated_e2e_admin_only
         run: |
           export SAG_E2E_POSTGRES_CA="$GITHUB_WORKSPACE/.work/postgres-lab-tls/ca.crt"

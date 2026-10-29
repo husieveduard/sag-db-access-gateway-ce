@@ -311,9 +311,11 @@ func postgresVaultSQLScenario(t *testing.T, scenario string) {
 		}
 		_, port, _ := net.SplitHostPort(brokerAddress)
 		portNumber, _ := strconv.Atoi(port)
-		launcher = map[string]any{"binary": managedBinary, "socket": socket, "cert": certPath, "key": keyPath, "worker_uid": os.Getuid(), "log_dir": filepath.Join(dir, "logs"), "control": "http://" + address, "port": portNumber, "backend_ca": os.Getenv("SAG_E2E_POSTGRES_CA")}
+		launcher = map[string]any{"binary": managedBinary, "socket": socket, "cert": certPath, "key": keyPath, "worker_uid": os.Getuid(), "log_dir": filepath.Join(dir, "logs"), "control": "http://" + address, "port": portNumber, "backend_ca": os.Getenv("SAG_E2E_POSTGRES_CA"), "runtime": os.Getenv("SAG_E2E_USE_RUNTIME") == "1"}
 		defer func() {
-			logs, _ := filepath.Glob(filepath.Join(dir, "logs", "managed-lab", "*.log"))
+			logScope := "managed-lab"
+			if os.Getenv("SAG_E2E_USE_RUNTIME") == "1" { logScope = "managed-runtime" }
+			logs, _ := filepath.Glob(filepath.Join(dir, "logs", logScope, "*.log"))
 			for _, path := range logs {
 				body, _ := os.ReadFile(path)
 				for _, secret := range []string{password, vaultPassword, "e2e-internal-only"} {

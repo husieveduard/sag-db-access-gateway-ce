@@ -28,6 +28,27 @@ Unix IPC worker as separate binaries. CI checks their presence and executable
 permissions in the non-root application image. They are not started by the
 existing Production Compose; runtime wiring and release acceptance remain open.
 
+## Explicit managed runtime path
+
+`SAG_MANAGED_RUNTIME_ENABLED` defaults to false. When explicitly enabled, the
+normal lifecycle service routes temporary managed sessions to the same native
+launcher used in the laboratory. Runtime configuration is separate from all
+`SAG_LAB_*` settings. It requires a private live Unix worker socket, exact
+broker binaries, a frontend certificate/key, verified backend CA per engine,
+an internal control URL whose host matches `SAG_MANAGED_CONTROL_HOST`, and a
+public endpoint. PostgreSQL, MySQL and MSSQL all require `verify-full` in this
+mode. The launcher records a distinct `managed_runtime` process marker so
+termination checks the correct executable even if the feature flag changes.
+
+The broker and trusted Unix worker must share a PID namespace so SO_PEERCRED
+PIDs match the process identity recorded by Laravel. The worker's trusted UID
+must match `SAG_MANAGED_WORKER_UID` or the launcher UID. Keep the socket in a
+private owner-only directory. The worker needs Laravel's Vault key; the broker
+receives neither that key nor the backend password in its environment or args.
+Current Production Compose does not start this worker or set the runtime flag.
+The isolated PostgreSQL TLS E2E exercises the runtime launcher, credential
+bootstrap, SQL and revocation with loopback listener in APP_ENV=testing.
+
 ## PostgreSQL automatic laboratory launch
 
 The normal production launch path is unchanged. The explicit CLI option is:

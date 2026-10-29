@@ -9,13 +9,19 @@ use RuntimeException;
 use Throwable;
 
 /** Shared launch/identity/readiness lifecycle; each engine needs a native adapter. */
-final class LabManagedBrokerLifecycleService extends DbGatewayLifecycleService
+class LabManagedBrokerLifecycleService extends DbGatewayLifecycleService
 {
     public function start(DbAccessSession $session): array
     {
         if (PHP_OS_FAMILY !== 'Linux' || ! function_exists('posix_geteuid') || ! app()->environment('local', 'testing') || config('sag.db_gateway.managed_lab.enabled') !== true) {
             throw new RuntimeException('Managed laboratory broker is disabled in this environment.');
         }
+        return $this->startNative($session, 'managed_lab', '127.0.0.1', '127.0.0.1', true);
+    }
+
+    protected function startNative(DbAccessSession $session, string $scope, string $listenHost, string $publicHost, bool $lab): array
+    {
+        $label = $lab ? 'laboratory' : 'runtime';
         $session->loadMissing('resource');
         if ($session->resource && ! $session->resource->usesPasswordBackendAuthentication()) {
             throw new RuntimeException('Selected backend authentication adapter is not implemented; refusing SQL authentication fallback.');
@@ -27,45 +33,49 @@ final class LabManagedBrokerLifecycleService extends DbGatewayLifecycleService
             'mssql', 'sqlserver' => 'mssql',
             default => throw new RuntimeException('Managed laboratory broker is not implemented for this engine.'),
         };
-        $binary = realpath((string) config('sag.db_gateway.managed_lab.'.$adapter.'_binary'));
-        $backendCa = (string) config('sag.db_gateway.managed_lab.'.$adapter.'_ca');
-        $socket = (string) config('sag.db_gateway.managed_lab.socket');
-        $cert = (string) config('sag.db_gateway.managed_lab.cert');
-        $key = (string) config('sag.db_gateway.managed_lab.key');
+        $binary = realpath((string) config('sag.db_gateway.'.$scope.'.'.$adapter.'_binary'));
+        $backendCa = (string) config('sag.db_gateway.'.$scope.'.'.$adapter.'_ca');
+        $socket = (string) config('sag.db_gateway.'.$scope.'.socket');
+        $cert = (string) config('sag.db_gateway.'.$scope.'.cert');
+        $key = (string) config('sag.db_gateway.'.$scope.'.key');
         $token = (string) config('sag.internal_token');
         $control = (string) config('sag.db_gateway.control_plane_url');
-        $workerUid = config('sag.db_gateway.managed_lab.worker_uid') ?? posix_geteuid();
+        $workerUid = config('sag.db_gateway.'.$scope.'.worker_uid') ?? posix_geteuid();
+        $controlHost = parse_url($control, PHP_URL_HOST);
+        $allowedControlHosts = $lab ? ['127.0.0.1', 'localhost', '::1'] : [(string) config('sag.db_gateway.managed_runtime.control_host', 'nginx')];
         if (($adapter !== 'postgresql' && ! is_readable($backendCa)) || ($adapter === 'postgresql' && $session->resource->target_tls_mode === 'verify-full' && ! is_readable($backendCa))
             || $binary === false || ! is_file($binary) || ! is_executable($binary) || ! is_readable($cert) || ! is_readable($key)
             || @filetype($socket) !== 'socket' || $token === '' || strtoupper($token) === 'CHANGE_ME'
             || ! ctype_digit((string) $workerUid) || (float) $workerUid > 4294967295
-            || ! in_array(parse_url($control, PHP_URL_HOST), ['127.0.0.1', 'localhost', '::1'], true)) {
-            throw new RuntimeException('Managed laboratory broker configuration is invalid.');
+            || ! in_array($controlHost, $allowedControlHosts, true)
+            || ! in_array(parse_url($control, PHP_URL_SCHEME), ['http', 'https'], true)) {
+            throw new RuntimeException('Managed '.$label.' broker configuration is invalid.');
         }
-        $logDir = rtrim((string) config('sag.db_gateway.log_dir'), '/').'/managed-lab';
+        $logDir = rtrim((string) config('sag.db_gateway.log_dir'), '/').'/'.str_replace('_', '-', $scope);
         if ((! is_dir($logDir) && ! mkdir($logDir, 0700, true)) || is_link($logDir)
             || (fileperms($logDir) & 0077) !== 0 || fileowner($logDir) !== posix_geteuid()) {
             throw new RuntimeException('Managed laboratory log directory must be private.');
         }
-        $session = DB::transaction(function () use ($session, $logDir, $engine, $adapter): DbAccessSession {
+        $session = DB::transaction(function () use ($session, $logDir, $engine, $adapter, $scope, $listenHost, $publicHost, $lab, $label): DbAccessSession {
             $locked = DbAccessSession::query()->with('resource')->whereKey($session->id)->lockForUpdate()->firstOrFail();
             $this->assertStartable($locked);
             if ($locked->mode !== 'temporary' || $locked->resource->auth_mode !== 'managed'
                 || ! $locked->resource->usesPasswordBackendAuthentication()
                 || ! in_array($locked->resource->target_tls_mode, $adapter === 'postgresql' ? ['disable', 'verify-full'] : ['verify-full'], true) || empty($locked->resource->target_database)
+                || (! $lab && $locked->resource->target_tls_mode !== 'verify-full')
                 || ($locked->resource->engine === 'postgres' ? 'postgresql' : $locked->resource->engine) !== $engine
                 || ! GatewayTemporaryCredential::query()->where('session_id', $locked->id)->exists()
                 || $this->isProcessRunning((int) data_get($locked->metadata, 'db.gateway_pid', 0))) {
-                throw new RuntimeException('Session is not eligible for managed laboratory launch.');
+                throw new RuntimeException('Session is not eligible for managed '.$label.' launch.');
             }
             $metadata = is_array($locked->metadata) ? $locked->metadata : [];
             $metadata['db'] = array_merge(is_array($metadata['db'] ?? null) ? $metadata['db'] : [], [
-                'managed_lab' => true, 'engine' => $engine, 'gateway_pid' => null,
+                $scope => true, 'engine' => $engine, 'gateway_pid' => null,
                 'gateway_proc_start_ticks' => null, 'bootstrap_consumed_at' => null,
                 'gateway_log_path' => $logDir.'/session-'.$locked->id.'.log',
             ]);
             $locked->forceFill(['status' => 'starting', 'metadata' => $metadata,
-                'gateway_host' => '127.0.0.1', 'gateway_port' => $this->allocatePort($locked, '127.0.0.1'),
+                'gateway_host' => $publicHost, 'gateway_port' => $this->allocatePort($locked, $listenHost),
                 'termination_reason' => null, 'last_activity_at' => now(),
             ])->save();
 
@@ -77,7 +87,7 @@ final class LabManagedBrokerLifecycleService extends DbGatewayLifecycleService
         $phase = 'spawn';
         $pipes = [];
         try {
-            $args = [$binary, '--supervised', '--listen=127.0.0.1:'.$session->gateway_port,
+            $args = [$binary, '--supervised', '--listen='.$this->hostPort($listenHost, $session->gateway_port),
                 '--target='.$this->hostPort($session->resource->target_host, $session->resource->target_port),
                 '--database='.$session->resource->target_database, '--backend-tls='.$session->resource->target_tls_mode, '--control='.$control,
                 '--ipc-socket='.$socket, '--worker-uid='.(string) $workerUid,
@@ -161,7 +171,7 @@ final class LabManagedBrokerLifecycleService extends DbGatewayLifecycleService
                 throw new RuntimeException('activation failed');
             }
             $session->refresh();
-            $this->writeAudit($session, null, 'access.db.gateway.managed_lab.started', 'info', ['gateway_pid' => $pid, 'engine' => $engine]);
+            $this->writeAudit($session, null, 'access.db.gateway.'.$scope.'.started', 'info', ['gateway_pid' => $pid, 'engine' => $engine]);
             // Releasing a proc_open handle is non-blocking; proc_close would wait
             // for this long-lived child. Existing lifecycle owns later termination.
             unset($process);
@@ -194,9 +204,9 @@ final class LabManagedBrokerLifecycleService extends DbGatewayLifecycleService
                 }
                 $this->terminate($session, $session->terminated_by_user_id, $session->termination_reason ?? 'startup_revoked');
             } elseif ($ownsLaunch && in_array($session->status, ['starting', 'started'], true)) {
-                $this->markStartFailed($session, 'managed_lab_'.$phase.'_failed');
+                $this->markStartFailed($session, $scope.'_'.$phase.'_failed');
             }
-            throw new RuntimeException('Managed laboratory broker launch failed.');
+            throw new RuntimeException('Managed '.$label.' broker launch failed.');
         } finally {
             foreach ($pipes as $pipe) {
                 if (is_resource($pipe)) {

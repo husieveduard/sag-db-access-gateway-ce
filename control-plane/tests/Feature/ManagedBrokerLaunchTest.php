@@ -7,6 +7,7 @@ use App\Models\DbAccessSession;
 use App\Models\User;
 use App\Services\DbAccess\LabManagedBrokerLifecycleService;
 use App\Services\DbAccess\DbGatewayLifecycleService;
+use App\Services\DbAccess\ManagedBrokerLifecycleService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use RuntimeException;
 use Tests\TestCase;
@@ -65,6 +66,55 @@ final class ManagedBrokerLaunchTest extends TestCase
             $this->fail('Production accepted lab launcher.');
         } catch (RuntimeException $e) {
             $this->assertStringContainsString('refusing passthrough fallback', $e->getMessage());
+        } finally {
+            $this->app->detectEnvironment(fn () => 'testing');
+        }
+        $this->assertSame('created', $session->fresh()->status);
+    }
+
+    public function test_runtime_is_disabled_by_default_and_does_not_mutate_session(): void
+    {
+        $session = $this->makeLaunchSession();
+        config()->set('sag.db_gateway.managed_runtime.enabled', false);
+        try {
+            app(ManagedBrokerLifecycleService::class)->start($session);
+            $this->fail('Disabled runtime launched.');
+        } catch (RuntimeException $e) {
+            $this->assertSame('Managed runtime broker is disabled in this environment.', $e->getMessage());
+        }
+        $this->assertSame('created', $session->fresh()->status);
+    }
+
+    public function test_explicit_runtime_routes_normal_start_without_using_lab_or_passthrough(): void
+    {
+        $session = $this->makeLaunchSession();
+        $session->resource->forceFill(['target_tls_mode' => 'verify-full'])->save();
+        config()->set('sag.db_gateway.managed_runtime.enabled', true);
+        config()->set('sag.db_gateway.managed_runtime.listen_host', '127.0.0.1');
+        config()->set('sag.db_gateway.managed_runtime.public_host', '127.0.0.1');
+        config()->set('sag.db_gateway.managed_lab.enabled', false);
+        try {
+            app(DbGatewayLifecycleService::class)->start($session->fresh());
+            $this->fail('Missing worker unexpectedly launched.');
+        } catch (RuntimeException $e) {
+            $this->assertSame('Managed runtime broker configuration is invalid.', $e->getMessage());
+        }
+        $this->assertSame('created', $session->fresh()->status);
+        $this->assertNull($session->fresh()->gateway_port);
+    }
+
+    public function test_production_runtime_rejects_loopback_listener_before_session_claim(): void
+    {
+        $session = $this->makeLaunchSession();
+        config()->set('sag.db_gateway.managed_runtime.enabled', true);
+        config()->set('sag.db_gateway.managed_runtime.listen_host', '127.0.0.1');
+        config()->set('sag.db_gateway.managed_runtime.public_host', 'example.test');
+        $this->app->detectEnvironment(fn () => 'production');
+        try {
+            app(DbGatewayLifecycleService::class)->start($session);
+            $this->fail('Production runtime accepted a loopback listener.');
+        } catch (RuntimeException $e) {
+            $this->assertSame('Managed runtime listener configuration is invalid.', $e->getMessage());
         } finally {
             $this->app->detectEnvironment(fn () => 'testing');
         }
