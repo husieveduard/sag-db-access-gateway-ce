@@ -65,3 +65,18 @@ The CI job runs against a real isolated SQL Server container. Local registry
 access may require the official Microsoft image CDN westus.data.mcr.microsoft.com.
 The earlier alternate composer:2/PHP 8.5 IPC launch issue remains separate from
 the validated PHP 8.3 CI runtime; this stage does not claim to resolve it.
+
+## Validation result
+
+On 2026-10-29, all nine scenarios passed against real SQL Server 2022 in GitHub
+CI (native adapter commit 1a258fd). This included the independent Microsoft
+client, typed results/writes, negative auth/TLS checks and backend session closure.
+The Go suite passed; Laravel reported 114 passed / 527 assertions locally, with
+one environment-gated legacy live test skipped. CI separately exercises the real
+Linux lifecycle and the PostgreSQL and MySQL/MariaDB SQL regression suites.
+
+Interop regressions cover zero-numbered server packet envelopes, empty deprecated
+PRELOGIN fields and one complete TDS packet per encrypted Write. The readiness
+probe uses its own live timeout after the one-time IPC bootstrap context closes.
+Local SQL Server image download remained blocked by the active environment's CDN
+policy; the SQL validation above used the isolated GitHub CI server.
