@@ -1,0 +1,24 @@
+# Explicit staging overlay. Apply only to an isolated deployment after
+# preparing owner-readable certificates and checking the release gates.
+# The default deploy/compose.yaml never enables managed runtime.
+services:
+  worker:
+    environment:
+      SAG_MANAGED_RUNTIME_ENABLED: "true"
+      SAG_MANAGED_VAULT_SOCKET: /run/sag-db-gateway/ipc/worker.sock
+      SAG_MANAGED_WORKER_UID: "33"
+      SAG_MANAGED_POSTGRES_BROKER_BINARY: /usr/local/bin/sag-postgresql-broker
+      SAG_MANAGED_MYSQL_BROKER_BINARY: /usr/local/bin/sag-mysql-broker
+      SAG_MANAGED_MSSQL_BROKER_BINARY: /usr/local/bin/sag-mssql-broker
+      SAG_MANAGED_POSTGRES_BACKEND_CA: /etc/sag/managed/postgresql-ca.crt
+      SAG_MANAGED_MYSQL_BACKEND_CA: /etc/sag/managed/mysql-ca.crt
+      SAG_MANAGED_MSSQL_BACKEND_CA: /etc/sag/managed/mssql-ca.crt
+      SAG_MANAGED_BROKER_CERT: /etc/sag/managed/frontend.crt
+      SAG_MANAGED_BROKER_KEY: /etc/sag/managed/frontend.key
+      SAG_MANAGED_LISTEN_HOST: 0.0.0.0
+      SAG_MANAGED_PUBLIC_HOST: ${SAG_CE_GATEWAY_PUBLIC_HOST}
+      SAG_MANAGED_CONTROL_HOST: nginx
+    tmpfs:
+      - /run/sag-db-gateway/ipc:uid=33,gid=33,mode=0700
+    volumes:
+      - ${SAG_CE_MANAGED_CERT_DIR:?set an absolute private staging certificate directory}:/etc/sag/managed:ro

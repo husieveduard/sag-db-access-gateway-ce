@@ -216,6 +216,16 @@ jobs:
             test "$(id -u)" != 0
           '
 
+      - name: Validate isolated managed staging overlay
+        run: |
+          sh -n deploy/worker-entrypoint.sh
+          SAG_CE_MANAGED_CERT_DIR=/tmp/sag-managed-candidate-fixture \
+            docker compose --project-directory "$PWD" \
+              --env-file deploy/.env.example \
+              -f deploy/compose.yaml \
+              -f deploy/compose.managed-candidate.yaml \
+              config --quiet
+
   vault-ipc-sql:
     name: Laravel Vault Unix IPC SQL E2E (PHP ${{ matrix.php }})
     runs-on: ubuntu-latest

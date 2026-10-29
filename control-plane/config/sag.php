@@ -50,7 +50,7 @@ return [
             'mysql_ca' => env('SAG_MANAGED_MYSQL_BACKEND_CA', ''),
             'mssql_binary' => env('SAG_MANAGED_MSSQL_BROKER_BINARY', '/usr/local/bin/sag-mssql-broker'),
             'mssql_ca' => env('SAG_MANAGED_MSSQL_BACKEND_CA', ''),
-            'socket' => env('SAG_MANAGED_VAULT_SOCKET', '/var/lib/sag/db-gateway/ipc/worker.sock'),
+            'socket' => env('SAG_MANAGED_VAULT_SOCKET', '/run/sag-db-gateway/ipc/worker.sock'),
             'worker_uid' => env('SAG_MANAGED_WORKER_UID'),
             'cert' => env('SAG_MANAGED_BROKER_CERT', ''),
             'key' => env('SAG_MANAGED_BROKER_KEY', ''),
