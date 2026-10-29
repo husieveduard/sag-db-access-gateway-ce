@@ -20,6 +20,10 @@ func tdsTestClient(t *testing.T, address, user, password, database string, confi
 	t.Helper()
 	host, port, _ := net.SplitHostPort(address)
 	n, _ := strconv.Atoi(port)
+	config = config.Clone()
+	if config.ServerName == "" {
+		config.ServerName = host
+	}
 	connector := mssqlclient.NewConnectorConfig(msdsn.Config{Host: host, Port: uint64(n), User: user, Password: password, Database: database, Encryption: msdsn.EncryptionRequired, TLSConfig: config, PacketSize: 4096, DisableRetry: true, DialTimeout: 3 * time.Second, ConnTimeout: 5 * time.Second, Protocols: []string{"tcp"}, NoTraceID: true})
 	db := sql.OpenDB(connector)
 	db.SetMaxOpenConns(1)
