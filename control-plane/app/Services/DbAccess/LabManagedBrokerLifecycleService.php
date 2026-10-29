@@ -35,7 +35,8 @@ final class LabManagedBrokerLifecycleService extends DbGatewayLifecycleService
         $token = (string) config('sag.internal_token');
         $control = (string) config('sag.db_gateway.control_plane_url');
         $workerUid = config('sag.db_gateway.managed_lab.worker_uid') ?? posix_geteuid();
-        if (($adapter !== 'postgresql' && ! is_readable($backendCa)) || $binary === false || ! is_file($binary) || ! is_executable($binary) || ! is_readable($cert) || ! is_readable($key)
+        if (($adapter !== 'postgresql' && ! is_readable($backendCa)) || ($adapter === 'postgresql' && $session->resource->target_tls_mode === 'verify-full' && ! is_readable($backendCa))
+            || $binary === false || ! is_file($binary) || ! is_executable($binary) || ! is_readable($cert) || ! is_readable($key)
             || @filetype($socket) !== 'socket' || $token === '' || strtoupper($token) === 'CHANGE_ME'
             || ! ctype_digit((string) $workerUid) || (float) $workerUid > 4294967295
             || ! in_array(parse_url($control, PHP_URL_HOST), ['127.0.0.1', 'localhost', '::1'], true)) {
@@ -51,7 +52,7 @@ final class LabManagedBrokerLifecycleService extends DbGatewayLifecycleService
             $this->assertStartable($locked);
             if ($locked->mode !== 'temporary' || $locked->resource->auth_mode !== 'managed'
                 || ! $locked->resource->usesPasswordBackendAuthentication()
-                || $locked->resource->target_tls_mode !== ($adapter !== 'postgresql' ? 'verify-full' : 'disable') || empty($locked->resource->target_database)
+                || ! in_array($locked->resource->target_tls_mode, $adapter === 'postgresql' ? ['disable', 'verify-full'] : ['verify-full'], true) || empty($locked->resource->target_database)
                 || ($locked->resource->engine === 'postgres' ? 'postgresql' : $locked->resource->engine) !== $engine
                 || ! GatewayTemporaryCredential::query()->where('session_id', $locked->id)->exists()
                 || $this->isProcessRunning((int) data_get($locked->metadata, 'db.gateway_pid', 0))) {
@@ -85,6 +86,8 @@ final class LabManagedBrokerLifecycleService extends DbGatewayLifecycleService
             if ($adapter !== 'postgresql') {
                 $args[] = '--backend-ca='.$backendCa;
                 $args[] = '--engine='.$engine;
+            } elseif ($session->resource->target_tls_mode === 'verify-full') {
+                $args[] = '--backend-ca='.$backendCa;
             }
             // Inherit only transport/locale variables. The broker must not get
             // Laravel DB passwords, Vault encryption keys or the internal token.

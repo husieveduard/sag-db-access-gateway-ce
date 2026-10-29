@@ -263,6 +263,47 @@ jobs:
           ../scripts/build-postgres-lab-broker.sh /tmp/sag-vault-broker-ci
           go test -v -run '^TestLaravelVaultIPC(PostgresSQL|ParallelBootstrap)$' -count=1 ./...
 
+  postgres-verified-tls-sql:
+    name: PostgreSQL verified TLS Vault SQL E2E
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.x'
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: bcmath, mbstring, pdo_sqlite, zip
+          coverage: none
+      - name: Install Laravel dependencies
+        working-directory: control-plane
+        run: |
+          composer install --no-interaction --prefer-dist --no-progress
+          cp .env.example .env
+          mkdir -p storage/framework/views storage/framework/cache/data storage/framework/sessions bootstrap/cache
+      - name: Start isolated verified-TLS PostgreSQL
+        run: ./scripts/start-postgres-tls-lab.sh
+      - name: Run real managed Vault SQL over verified backend TLS
+        working-directory: db-gateway
+        env:
+          SAG_E2E_BROKER_BINARY: /tmp/sag-vault-broker-ci
+          SAG_E2E_POSTGRES: 127.0.0.1:35432
+          SAG_E2E_POSTGRES_TLS_MODE: verify-full
+          SAG_E2E_ADMIN_PASSWORD: isolated_e2e_admin_only
+        run: |
+          export SAG_E2E_POSTGRES_CA="$GITHUB_WORKSPACE/.work/postgres-lab-tls/ca.crt"
+          ../scripts/build-postgres-lab-broker.sh "$SAG_E2E_BROKER_BINARY"
+          go test -v -run '^TestLaravelVaultIPCPostgresSQL$' -count=1 -timeout=4m ./...
+      - name: Diagnose isolated PostgreSQL failure
+        if: failure()
+        run: docker logs --tail 100 sag-pr21-pg-tls || true
+      - name: Remove disposable PostgreSQL
+        if: always()
+        run: |
+          docker rm -fv sag-pr21-pg-tls || true
+          docker network rm sag-pr21-pg-tls-net || true
+
   mysql-vault-ipc-sql:
     name: MySQL 8.4 and MariaDB 11.4 Vault SQL E2E (PHP ${{ matrix.php }})
     runs-on: ubuntu-latest

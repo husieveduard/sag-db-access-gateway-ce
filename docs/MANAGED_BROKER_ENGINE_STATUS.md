@@ -6,7 +6,7 @@ launch lifecycle, TLS policy, SQL behavior and regression tests are ready.
 
 | Engine | Vault and process-bound IPC | Native managed SQL | Automatic lab lifecycle | Production managed mode |
 | --- | --- | --- | --- | --- |
-| PostgreSQL | Implemented and SQL-tested | Simple query and bounded Sync-delimited extended protocol; real pgx SQL E2E | Implemented behind explicit local/testing opt-in | Disabled |
+| PostgreSQL | Implemented and SQL-tested | Simple query and bounded Sync-delimited extended protocol; real pgx SQL E2E | Implemented behind explicit local/testing opt-in; explicit `verify-full` CA/hostname support added | Disabled |
 | MySQL / MariaDB | Implemented with the shared process-bound worker | Verified TLS, native auth, COM_QUERY and bounded native prepared/binary results; real SELECT 1 | Same explicit local/testing launcher | Disabled |
 | MSSQL / SQL Server | Shared process-bound worker | Native TDS 7.4, verified TLS, SQL authentication, SQLBatch and bounded `sp_executesql` RPC; real SELECT 1 and lifecycle E2E | Same explicit local/testing launcher | Disabled |
 
@@ -47,7 +47,9 @@ Configure SAG_LAB_POSTGRES_BROKER_BINARY, SAG_LAB_VAULT_SOCKET,
 SAG_LAB_BROKER_CERT, SAG_LAB_BROKER_KEY and optionally SAG_LAB_WORKER_UID. Start the
 trusted Vault worker separately with its private directory/socket. The session
 must be temporary with an issued temporary login, its resource must explicitly
-use auth_mode=managed and target_tls_mode=disable for this isolated lab runner.
+use auth_mode=managed and choose target_tls_mode=disable or verify-full. The
+verified mode additionally requires SAG_LAB_POSTGRES_BACKEND_CA; the broker
+checks that CA and the target hostname before backend authentication.
 Frontend listen and control-plane HTTP are restricted to loopback; no production
 transport setting is silently downgraded.
 

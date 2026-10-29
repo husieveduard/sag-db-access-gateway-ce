@@ -118,4 +118,21 @@ final class ManagedBrokerLaunchTest extends TestCase
             $this->assertSame('created', $session->fresh()->status);
         }
     }
+
+    public function test_postgresql_verify_full_requires_explicit_backend_ca_before_claiming_session(): void
+    {
+        $session = $this->makeLaunchSession();
+        $session->resource->forceFill(['target_tls_mode' => 'verify-full'])->save();
+        config()->set('sag.db_gateway.managed_lab.enabled', true);
+        config()->set('sag.db_gateway.managed_lab.postgresql_binary', '/bin/false');
+        config()->set('sag.db_gateway.managed_lab.postgresql_ca', '');
+        try {
+            app(DbGatewayLifecycleService::class)->start($session->fresh());
+            $this->fail('PostgreSQL verified TLS accepted without a CA.');
+        } catch (RuntimeException $e) {
+            $this->assertSame('Managed laboratory broker configuration is invalid.', $e->getMessage());
+        }
+        $this->assertSame('created', $session->fresh()->status);
+        $this->assertNull($session->fresh()->gateway_port);
+    }
 }

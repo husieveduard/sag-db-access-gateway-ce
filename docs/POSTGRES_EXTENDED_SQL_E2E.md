@@ -76,12 +76,26 @@ go test -v -run '^TestLaravelVaultIPC(PostgresSQL|ParallelBootstrap)$' -count=1 
 ```
 
 Set SAG_E2E_LARAVEL=1 to include the real concurrent Laravel bootstrap test.
-PostgreSQL backend transport remains explicitly selected disable only inside the
-isolated lab runner; this stage does not change that deployment gate or silently
-downgrade a configured transport. Frontend TLS and all session checks are required.
+Backend transport remains explicitly selected; frontend TLS and all session
+checks are required.
 
 Local final validation on PHP 8.5 passed all 17 PostgreSQL SQL scenarios and the
 real concurrent Laravel Vault grant test. Extended-protocol unit/race tests and
 the complete Go suite passed. Earlier isolated retries were needed for two local
 readiness/connection failures; authentication deadlines were not weakened. The
 full final run passed with all existing simple-query and lifecycle regressions.
+
+## Verified backend TLS
+
+The native PostgreSQL broker now accepts `target_tls_mode=verify-full` with an
+explicit `SAG_LAB_POSTGRES_BACKEND_CA` bundle. It builds a separate backend TLS
+session, verifies the CA and the target hostname before sending the Vault role's
+password, and never falls back to plaintext. The normal production managed gate
+remains disabled.
+
+`scripts/start-postgres-tls-lab.sh` creates a disposable PostgreSQL 16 server
+with a short-lived CA. The CI `PostgreSQL verified TLS Vault SQL E2E` job runs
+real extended SQL and `SELECT 1` through Laravel Vault, the Unix worker and the
+broker. It also checks wrong CA/hostname rejection, bad Vault credentials, idle
+revocation and child cleanup. The test container and private CA material are
+removed after the run.

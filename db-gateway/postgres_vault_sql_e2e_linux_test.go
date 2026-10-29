@@ -29,7 +29,11 @@ func TestLaravelVaultIPCPostgresSQL(t *testing.T) {
 	if os.Getenv("SAG_E2E_REQUIRE_WORKER_PID1") == "1" && os.Getpid() != 1 {
 		t.Fatal("PID-namespace regression must run its real worker as PID 1")
 	}
-	for _, scenario := range []string{"revoke", "expire", "deactivate", "replace_pid", "replace_ticks", "worker_lost", "managed_start", "managed_extended", "managed_extended_revoke", "managed_extended_worker_lost", "managed_extended_closed", "managed_extended_copy", "managed_idle_revoke", "managed_idle_worker_lost", "managed_pending_revoke", "managed_bad_secret", "managed_revoke_start"} {
+	scenarios := []string{"revoke", "expire", "deactivate", "replace_pid", "replace_ticks", "worker_lost", "managed_start", "managed_extended", "managed_extended_revoke", "managed_extended_worker_lost", "managed_extended_closed", "managed_extended_copy", "managed_idle_revoke", "managed_idle_worker_lost", "managed_pending_revoke", "managed_bad_secret", "managed_revoke_start"}
+	if os.Getenv("SAG_E2E_POSTGRES_TLS_MODE") == "verify-full" {
+		scenarios = []string{"managed_extended", "managed_bad_secret", "managed_idle_revoke"}
+	}
+	for _, scenario := range scenarios {
 		t.Run(scenario, func(t *testing.T) { postgresVaultSQLScenario(t, scenario) })
 	}
 }
@@ -61,11 +65,41 @@ func postgresVaultSQLScenario(t *testing.T, scenario string) {
 		t.Fatal(err)
 	}
 	password := hex.EncodeToString(random)
-	admin, err := pgBrokerBackendConnectWithMode(target, "disable", nil, "postgres", os.Getenv("SAG_E2E_ADMIN_PASSWORD"), "sag_e2e")
+	backendMode := os.Getenv("SAG_E2E_POSTGRES_TLS_MODE")
+	if backendMode == "" {
+		backendMode = "disable"
+	}
+	var backendTLS *tls.Config
+	if backendMode == "verify-full" {
+		ca, e := os.ReadFile(os.Getenv("SAG_E2E_POSTGRES_CA"))
+		roots := x509.NewCertPool()
+		if e != nil || !roots.AppendCertsFromPEM(ca) {
+			t.Fatal("isolated PostgreSQL CA unavailable")
+		}
+		host, _, e := net.SplitHostPort(target)
+		if e != nil {
+			t.Fatal(e)
+		}
+		backendTLS = &tls.Config{RootCAs: roots, ServerName: host, MinVersion: tls.VersionTLS12}
+	}
+	admin, err := pgBrokerBackendConnectWithMode(target, backendMode, backendTLS, "postgres", os.Getenv("SAG_E2E_ADMIN_PASSWORD"), "sag_e2e")
 	if err != nil {
 		t.Fatal("isolated postgres admin unavailable")
 	}
 	defer admin.Close()
+	if backendMode == "verify-full" {
+		wrongCA := &tls.Config{RootCAs: x509.NewCertPool(), ServerName: backendTLS.ServerName, MinVersion: tls.VersionTLS12}
+		if conn, e := pgBrokerBackendConnectWithMode(target, backendMode, wrongCA, "postgres", os.Getenv("SAG_E2E_ADMIN_PASSWORD"), "sag_e2e"); e == nil {
+			conn.Close()
+			t.Fatal("untrusted PostgreSQL backend CA accepted")
+		}
+		wrongName := backendTLS.Clone()
+		wrongName.ServerName = "wrong-postgres.invalid"
+		if conn, e := pgBrokerBackendConnectWithMode(target, backendMode, wrongName, "postgres", os.Getenv("SAG_E2E_ADMIN_PASSWORD"), "sag_e2e"); e == nil {
+			conn.Close()
+			t.Fatal("wrong PostgreSQL backend hostname accepted")
+		}
+	}
 	query := func(conn net.Conn, sql string) []byte {
 		t.Helper()
 		_ = conn.SetDeadline(time.Now().Add(8 * time.Second))
@@ -95,7 +129,7 @@ func postgresVaultSQLScenario(t *testing.T, scenario string) {
 	defer query(admin, "DROP TABLE ipc_guard_probe")
 	query(admin, "GRANT INSERT ON ipc_guard_probe TO ipc_e2e_backend")
 
-	if invalid, e := pgBrokerBackendConnectWithMode(target, "disable", nil, "ipc_e2e_backend", "invalid-fixture-password", "sag_e2e"); e == nil {
+	if invalid, e := pgBrokerBackendConnectWithMode(target, backendMode, backendTLS, "ipc_e2e_backend", "invalid-fixture-password", "sag_e2e"); e == nil {
 		invalid.Close()
 		t.Fatal("isolated PostgreSQL must require password authentication")
 	}
@@ -142,7 +176,7 @@ func postgresVaultSQLScenario(t *testing.T, scenario string) {
 	}
 	targetHost, targetPort, _ := net.SplitHostPort(target)
 	targetPortNumber, _ := strconv.Atoi(targetPort)
-	if json.Unmarshal(fixture(map[string]any{"action": "setup", "password": vaultPassword, "pid": os.Getpid(), "ticks": ticks, "managed": managed, "target_host": targetHost, "target_port": targetPortNumber}), &setup) != nil {
+	if json.Unmarshal(fixture(map[string]any{"action": "setup", "password": vaultPassword, "pid": os.Getpid(), "ticks": ticks, "managed": managed, "target_host": targetHost, "target_port": targetPortNumber, "tls_mode": backendMode}), &setup) != nil {
 		t.Fatal("invalid fixture response")
 	}
 	// Launch the real HTTP control plane. Backend credentials never use HTTP.
@@ -277,7 +311,7 @@ func postgresVaultSQLScenario(t *testing.T, scenario string) {
 		}
 		_, port, _ := net.SplitHostPort(brokerAddress)
 		portNumber, _ := strconv.Atoi(port)
-		launcher = map[string]any{"binary": managedBinary, "socket": socket, "cert": certPath, "key": keyPath, "worker_uid": os.Getuid(), "log_dir": filepath.Join(dir, "logs"), "control": "http://" + address, "port": portNumber}
+		launcher = map[string]any{"binary": managedBinary, "socket": socket, "cert": certPath, "key": keyPath, "worker_uid": os.Getuid(), "log_dir": filepath.Join(dir, "logs"), "control": "http://" + address, "port": portNumber, "backend_ca": os.Getenv("SAG_E2E_POSTGRES_CA")}
 		defer func() {
 			logs, _ := filepath.Glob(filepath.Join(dir, "logs", "managed-lab", "*.log"))
 			for _, path := range logs {

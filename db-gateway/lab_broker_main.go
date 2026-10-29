@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"flag"
 	"fmt"
@@ -24,6 +25,7 @@ func main() {
 	listen := flag.String("listen", "127.0.0.1:15432", "laboratory bind address")
 	target := flag.String("target", "sag-ce-lab-postgres:5432", "backend address")
 	mode := flag.String("backend-tls", "disable", "backend transport")
+	caFile := flag.String("backend-ca", "", "backend PostgreSQL CA bundle for verify-full")
 	db := flag.String("database", "sag_ce_lab", "allowed database")
 	socket := flag.String("ipc-socket", "", "private credential worker Unix socket")
 	resource := flag.Int64("resource", 0, "bound resource ID")
@@ -42,8 +44,31 @@ func main() {
 	if *socket == "" || *resource <= 0 || *workerUID > uint(^uint32(0)) || *certFile == "" || *keyFile == "" || (!*supervised && *tokenFile == "") || *session == "" || *control == "" {
 		fatal(errors.New("missing required lab configuration"))
 	}
-	if *mode != "disable" {
-		fatal(errors.New("this lab runner supports only explicitly selected disable backend TLS mode"))
+	var backendTLS *tls.Config
+	switch *mode {
+	case "disable":
+		if *caFile != "" {
+			fatal(errors.New("CA is not used with disabled backend TLS"))
+		}
+	case "verify-full":
+		if *caFile == "" {
+			fatal(errors.New("verified backend CA is required"))
+		}
+		host, _, e := net.SplitHostPort(*target)
+		if e != nil || host == "" {
+			fatal(errors.New("invalid backend target"))
+		}
+		ca, e := os.ReadFile(*caFile)
+		if e != nil {
+			fatal(errors.New("backend CA unavailable"))
+		}
+		roots := x509.NewCertPool()
+		if !roots.AppendCertsFromPEM(ca) {
+			fatal(errors.New("invalid backend CA"))
+		}
+		backendTLS = &tls.Config{RootCAs: roots, ServerName: host, MinVersion: tls.VersionTLS12}
+	default:
+		fatal(errors.New("unsupported backend TLS mode"))
 	}
 	cert, err := tls.LoadX509KeyPair(*certFile, *keyFile)
 	if err != nil {
@@ -82,7 +107,7 @@ func main() {
 		fatal(errors.New("bootstrap denied"))
 	}
 	if *supervised {
-		probe, e := pgBrokerBackendConnectWithMode(*target, *mode, nil, credentials.Username, credentials.Password, *db)
+		probe, e := pgBrokerBackendConnectWithMode(*target, *mode, backendTLS, credentials.Username, credentials.Password, *db)
 		if e != nil {
 			fatal(errors.New("backend readiness failed"))
 		}
@@ -116,7 +141,7 @@ func main() {
 		stopConn := context.AfterFunc(ctx, func() { _ = conn.Close() })
 		e = pgBrokerServeAuthenticatedSession(ctx, conn, &tls.Config{
 			Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12,
-		}, &http.Client{Timeout: 5 * time.Second}, *control, token, *session, *db, *target, *mode, nil,
+		}, &http.Client{Timeout: 5 * time.Second}, *control, token, *session, *db, *target, *mode, backendTLS,
 			func(context.Context) (PgBrokerBackendCredential, error) {
 				if !pgIPCBoundSessionCheck(*socket, *session, *resource, uint32(*workerUID))(ctx) {
 					return PgBrokerBackendCredential{}, errors.New("session denied")

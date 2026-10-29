@@ -21,7 +21,7 @@ if (app()->environment() !== 'testing' || config('database.default') !== 'sqlite
 $input = json_decode(stream_get_contents(STDIN), true, 512, JSON_THROW_ON_ERROR);
 if (isset($input['launcher'])) {
     $lab = $input['launcher'];
-    config()->set('sag.db_gateway.managed_lab', ['enabled' => true, 'postgresql_binary' => $lab['binary'], 'mssql_binary' => $lab['binary'], 'mssql_ca' => $lab['backend_ca'] ?? '', 'mysql_binary' => $lab['binary'], 'mysql_ca' => $lab['backend_ca'] ?? '',
+    config()->set('sag.db_gateway.managed_lab', ['enabled' => true, 'postgresql_binary' => $lab['binary'], 'postgresql_ca' => $lab['backend_ca'] ?? '', 'mssql_binary' => $lab['binary'], 'mssql_ca' => $lab['backend_ca'] ?? '', 'mysql_binary' => $lab['binary'], 'mysql_ca' => $lab['backend_ca'] ?? '',
         'socket' => $lab['socket'], 'cert' => $lab['cert'], 'key' => $lab['key'], 'worker_uid' => $lab['worker_uid']]);
     config()->set('sag.db_gateway.log_dir', $lab['log_dir']);
     config()->set('sag.db_gateway.control_plane_url', $lab['control']);

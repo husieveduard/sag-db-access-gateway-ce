@@ -34,6 +34,7 @@ return [
             'mysql_binary' => env('SAG_LAB_MYSQL_BROKER_BINARY', ''),
             'mysql_ca' => env('SAG_LAB_MYSQL_BACKEND_CA', ''),
             'postgresql_binary' => env('SAG_LAB_POSTGRES_BROKER_BINARY', ''),
+            'postgresql_ca' => env('SAG_LAB_POSTGRES_BACKEND_CA', ''),
             'socket' => env('SAG_LAB_VAULT_SOCKET', ''),
             'worker_uid' => env('SAG_LAB_WORKER_UID'),
             'cert' => env('SAG_LAB_BROKER_CERT', ''),
