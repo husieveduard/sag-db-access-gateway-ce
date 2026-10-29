@@ -98,13 +98,22 @@ func main() {
 			fatal(err)
 		}
 	}
+	local := pgIPCBoundSessionCheck(*socket, *session, *resource, uint32(*workerUID))
+	lifetime, stopLifetime := brokerWatchManagedListener(context.Background(), listener, func(ctx context.Context) bool {
+		return checkBrokerEngineSessionActive(ctx, &http.Client{Timeout: 3 * time.Second}, *control, token, *session, "postgresql", local)
+	})
+	defer stopLifetime()
 	fmt.Printf("LAB_BROKER_LISTEN=%s\n", listener.Addr())
 	for {
 		conn, e := listener.Accept()
 		if e != nil {
+			if lifetime.Err() != nil {
+				return
+			}
 			fatal(e)
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		ctx, cancel := context.WithTimeout(lifetime, 5*time.Minute)
+		stopConn := context.AfterFunc(ctx, func() { _ = conn.Close() })
 		e = pgBrokerServeAuthenticatedSession(ctx, conn, &tls.Config{
 			Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12,
 		}, &http.Client{Timeout: 5 * time.Second}, *control, token, *session, *db, *target, *mode, nil,
@@ -114,6 +123,7 @@ func main() {
 				}
 				return credentials, nil
 			}, pgIPCBoundSessionCheck(*socket, *session, *resource, uint32(*workerUID)))
+		stopConn()
 		cancel()
 		if e != nil {
 			fmt.Fprintln(os.Stderr, "LAB_SESSION_FAILED")

@@ -80,3 +80,14 @@ func TestPGIPCLiveAuthorizationAlwaysPassesKernelIdentity(t *testing.T) {
 		t.Fatal("missing peer identity allowed")
 	}
 }
+
+func TestIPCAuthorizationOutputFloodIsBoundedAndDenied(t *testing.T) {
+	stub := filepath.Join(t.TempDir(), "php")
+	if os.WriteFile(stub, []byte("#!/bin/sh\nhead -c 1048576 /dev/zero\necho ALLOW\n"), 0700) != nil {
+		t.Fatal("stub setup failed")
+	}
+	peer := context.WithValue(context.Background(), pgIPCPeerIdentityKey{}, pgIPCPeerIdentity{PID: 12345, StartTicks: "456"})
+	if pgIPCLaravelAuthorizer(stub, "/trusted/artisan")(peer, "session", 7) {
+		t.Fatal("oversized authorization output allowed")
+	}
+}

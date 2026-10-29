@@ -72,19 +72,28 @@ func main() {
 	if launch.backendReady() != nil {
 		myFatal()
 	}
+	local := pgIPCBoundSessionCheck(*socket, *session, *resource, uint32(*workerUID))
+	lifetime, stopLifetime := brokerWatchManagedListener(context.Background(), listener, func(ctx context.Context) bool {
+		return checkBrokerEngineSessionActive(ctx, &http.Client{Timeout: 3 * time.Second}, *control, token, *session, *engine, local)
+	})
+	defer stopLifetime()
 	for {
 		conn, e := listener.Accept()
 		if e != nil {
+			if lifetime.Err() != nil {
+				return
+			}
 			myFatal()
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-		local := pgIPCBoundSessionCheck(*socket, *session, *resource, uint32(*workerUID))
+		ctx, cancel := context.WithTimeout(lifetime, 5*time.Minute)
+		stopConn := context.AfterFunc(ctx, func() { _ = conn.Close() })
 		e = myServeSession(ctx, conn, &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}, backendTLS, &http.Client{Timeout: 5 * time.Second}, *control, token, *session, *engine, *database, *target, func(ctx context.Context) (BrokerBackendCredential, error) {
 			if !local(ctx) {
 				return BrokerBackendCredential{}, errIPCUnavailable
 			}
 			return credentials, nil
 		}, local)
+		stopConn()
 		cancel()
 		if e != nil {
 			fmt.Fprintln(os.Stderr, "MYSQL_LAB_SESSION_FAILED")

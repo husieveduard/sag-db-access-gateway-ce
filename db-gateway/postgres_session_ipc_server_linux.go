@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -35,6 +36,8 @@ type pgIPCPeerIdentity struct {
 // pgIPCServeAuthorization handles only non-secret allow/deny responses.
 // The socket directory must be private; never bind this endpoint to TCP.
 // Linux SO_PEERCRED prevents a session UID from acting as authentication.
+const pgIPCMaxConcurrentRequests = 16
+
 func pgIPCServeAuthorization(ctx context.Context, socketPath string, trustedUID uint32, authorize pgIPCSessionAuthorize, providers ...pgIPCCredentialProvider) error {
 	if ctx == nil || ctx.Err() != nil || socketPath == "" || authorize == nil {
 		return errors.New("IPC configuration invalid")
@@ -46,15 +49,30 @@ func pgIPCServeAuthorization(ctx context.Context, socketPath string, trustedUID 
 	if _, err := os.Lstat(socketPath); err == nil {
 		return errors.New("IPC socket path already exists")
 	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	listener, err := net.Listen("unix", socketPath)
 	if err != nil {
 		return err
 	}
 	defer listener.Close()
-	defer os.Remove(socketPath)
+	// Close only our listener; do not unlink a replacement socket at this path.
+	listener.(*net.UnixListener).SetUnlinkOnClose(false)
+	socketInfo, err := os.Lstat(socketPath)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if current, e := os.Lstat(socketPath); e == nil && os.SameFile(socketInfo, current) {
+			_ = os.Remove(socketPath)
+		}
+	}()
 	if err = os.Chmod(socketPath, 0600); err != nil {
 		return err
 	}
+	var handlers sync.WaitGroup
+	slots := make(chan struct{}, pgIPCMaxConcurrentRequests)
+	defer func() { cancel(); _ = listener.Close(); handlers.Wait() }()
 	go func() { <-ctx.Done(); _ = listener.Close() }()
 	for {
 		conn, acceptErr := listener.Accept()
@@ -64,12 +82,27 @@ func pgIPCServeAuthorization(ctx context.Context, socketPath string, trustedUID 
 			}
 			return acceptErr
 		}
-		pgIPCHandleAuthorization(ctx, conn, trustedUID, authorize, providers...)
+		select {
+		case slots <- struct{}{}:
+			handlers.Add(1)
+			go func() {
+				defer handlers.Done()
+				defer func() { <-slots }()
+				pgIPCHandleAuthorization(ctx, conn, trustedUID, authorize, providers...)
+			}()
+		default:
+			// Bound both goroutines and simultaneous PHP/Vault subprocesses.
+			_ = conn.Close()
+		}
 	}
 }
 
 func pgIPCHandleAuthorization(ctx context.Context, conn net.Conn, trustedUID uint32, authorize pgIPCSessionAuthorize, providers ...pgIPCCredentialProvider) {
 	defer conn.Close()
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	stopClose := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stopClose()
 	unixConn, ok := conn.(*net.UnixConn)
 	if !ok {
 		return

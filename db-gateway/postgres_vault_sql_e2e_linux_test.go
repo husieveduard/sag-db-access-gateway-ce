@@ -26,7 +26,10 @@ import (
 // Requires an isolated PostgreSQL with admin password from test-only env,
 // PHP with SQLite and installed Laravel dependencies. Never points at production.
 func TestLaravelVaultIPCPostgresSQL(t *testing.T) {
-	for _, scenario := range []string{"revoke", "expire", "deactivate", "replace_pid", "replace_ticks", "worker_lost", "managed_start", "managed_bad_secret", "managed_revoke_start"} {
+	if os.Getenv("SAG_E2E_REQUIRE_WORKER_PID1") == "1" && os.Getpid() != 1 {
+		t.Fatal("PID-namespace regression must run its real worker as PID 1")
+	}
+	for _, scenario := range []string{"revoke", "expire", "deactivate", "replace_pid", "replace_ticks", "worker_lost", "managed_start", "managed_idle_revoke", "managed_idle_worker_lost", "managed_pending_revoke", "managed_bad_secret", "managed_revoke_start"} {
 		t.Run(scenario, func(t *testing.T) { postgresVaultSQLScenario(t, scenario) })
 	}
 }
@@ -118,9 +121,13 @@ func postgresVaultSQLScenario(t *testing.T, scenario string) {
 		}
 		return out
 	}
-	ticks, err := pgIPCPeerProcessStartTicks(int32(os.Getpid()))
-	if err != nil {
-		t.Fatal(err)
+	var ticks string
+	// Managed cases bind the separately launched broker, not this test worker.
+	if !managed {
+		ticks, err = pgIPCPeerProcessStartTicks(int32(os.Getpid()))
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	var setup struct {
 		Resource  int64 `json:"resource"`
@@ -337,6 +344,21 @@ func postgresVaultSQLScenario(t *testing.T, scenario string) {
 			}
 		}
 		t.Log("Laravel launcher recorded process identity, bootstrapped Vault, authenticated backend and activated session")
+		if strings.HasPrefix(scenario, "managed_idle_") || scenario == "managed_pending_revoke" {
+			assertIdleManagedBrokerStops(t, result.PID, brokerAddress, scenario == "managed_pending_revoke", func() {
+				if scenario == "managed_idle_worker_lost" {
+					stopWorker()
+				} else {
+					fixture(map[string]any{"action": "revoke"})
+				}
+			})
+			rows := query(admin, "SELECT count(*)::text FROM pg_stat_activity WHERE usename='ipc_e2e_backend'")
+			if len(rows) != 7 || rows[6] != '0' {
+				t.Fatal("idle invalidation retained a backend connection")
+			}
+			return
+		}
+
 	} else {
 		brokerDone = make(chan error, 1)
 		go func() {

@@ -59,3 +59,7 @@ bootstrap while preserving the recorded process identity.
 See [Vault IPC SQL E2E](VAULT_IPC_SQL_E2E.md) for the full test command. Build the
 lab adapter with scripts/build-postgres-lab-broker.sh /absolute/output/path and set
 SAG_E2E_BROKER_BINARY to that executable to include the managed-launch cases.
+
+Shared idle process cleanup, concurrent IPC and PID namespace compatibility are
+covered in [IPC/lifetime hardening](IPC_LIFECYCLE_HARDENING.md). Production gates
+remain disabled.

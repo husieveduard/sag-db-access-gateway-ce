@@ -14,6 +14,24 @@ import (
 	"time"
 )
 
+// Authorization output is non-secret and must remain bounded even if PHP
+// accidentally emits diagnostics. Continue draining until the command deadline.
+type pgIPCAuthorizationOutput struct {
+	data     []byte
+	overflow bool
+}
+
+func (w *pgIPCAuthorizationOutput) Write(p []byte) (int, error) {
+	n := len(p)
+	remaining := 128 - len(w.data)
+	if len(p) > remaining {
+		w.overflow = true
+		p = p[:remaining]
+	}
+	w.data = append(w.data, p...)
+	return n, nil
+}
+
 // pgIPCLaravelAuthorizer invokes only the non-secret local Laravel
 // session/resource gate. No shell, environment secrets, or Vault data.
 // The worker image must contain PHP, artisan and its private DB access.
@@ -39,11 +57,14 @@ func pgIPCLaravelAuthorizer(phpBinary, artisanPath string) pgIPCSessionAuthorize
 			args = append(args, "--active-peer")
 		}
 		cmd := exec.CommandContext(checkCtx, phpBinary, args...)
-		output, err := cmd.Output()
-		if err != nil || checkCtx.Err() != nil || len(output) > 128 {
+		output := &pgIPCAuthorizationOutput{}
+		cmd.Stdout = output
+		cmd.WaitDelay = 250 * time.Millisecond
+		err := cmd.Run()
+		if err != nil || checkCtx.Err() != nil || output.overflow {
 			return false
 		}
-		return strings.TrimSpace(string(output)) == "ALLOW"
+		return strings.TrimSpace(string(output.data)) == "ALLOW"
 	}
 }
 
@@ -72,6 +93,7 @@ func pgIPCLaravelCredentials(phpBinary, artisanPath string) pgIPCCredentialProvi
 		cmd := exec.CommandContext(checkCtx, phpBinary, artisanPath, "sag:take-gateway-ipc-credentials", sessionUID, strconv.FormatInt(resourceID, 10),
 			"--peer-pid="+strconv.FormatInt(int64(peer.PID), 10), "--peer-start-ticks="+peer.StartTicks, "--no-ansi", "--no-interaction")
 		cmd.ExtraFiles = []*os.File{writer}
+		cmd.WaitDelay = 250 * time.Millisecond
 		if cmd.Start() != nil {
 			return credential, errIPCLocalWorkerRequired
 		}

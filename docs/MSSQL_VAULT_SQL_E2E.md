@@ -63,8 +63,8 @@ production/laboratory native protocol code uses the standard library.
 
 The CI job runs against a real isolated SQL Server container. Local registry
 access may require the official Microsoft image CDN westus.data.mcr.microsoft.com.
-The earlier alternate composer:2/PHP 8.5 IPC launch issue remains separate from
-the validated PHP 8.3 CI runtime; this stage does not claim to resolve it.
+The former composer:2/PHP 8.5 IPC failure was traced to PID 1 worker rejection;
+see [IPC/lifetime hardening](IPC_LIFECYCLE_HARDENING.md) for the fix and regression matrix.
 
 ## Validation result
 

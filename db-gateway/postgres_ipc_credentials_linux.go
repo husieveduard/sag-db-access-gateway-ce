@@ -61,7 +61,10 @@ func pgIPCTrustedWorker(conn net.Conn, workerUID uint32) bool {
 	trusted := false
 	return raw.Control(func(fd uintptr) {
 		cred, e := syscall.GetsockoptUcred(int(fd), syscall.SOL_SOCKET, syscall.SO_PEERCRED)
-		trusted = e == nil && cred.Uid == workerUID && cred.Pid > 1
+		// PID 1 is a legitimate worker entrypoint inside a PID namespace.
+		// PID 0 denotes an unavailable/cross-namespace peer and remains denied.
+		// Gateway recipients still require their exact launcher-bound PID > 1.
+		trusted = e == nil && cred.Uid == workerUID && cred.Pid > 0
 	}) == nil && trusted
 }
 

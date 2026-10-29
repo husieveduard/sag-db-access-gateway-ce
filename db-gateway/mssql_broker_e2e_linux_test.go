@@ -83,7 +83,7 @@ func TestMSSQLVaultSQL(t *testing.T) {
 	if target == "" {
 		t.Skip("set isolated SQL Server endpoint")
 	}
-	for _, scenario := range []string{"revoke", "expire", "deactivate", "replace_pid", "replace_ticks", "worker_lost", "unsupported_command", "bad_secret", "startup_revoke"} {
+	for _, scenario := range []string{"revoke", "expire", "deactivate", "replace_pid", "replace_ticks", "worker_lost", "idle_revoke", "idle_worker_lost", "pending_revoke", "unsupported_command", "bad_secret", "startup_revoke"} {
 		t.Run(scenario, func(t *testing.T) { tdsVaultScenario(t, "mssql", target, scenario) })
 	}
 }
@@ -353,6 +353,21 @@ func tdsVaultScenario(t *testing.T, engine, target, scenario string) {
 	if _, e := pgIPCTakeCredentials(context.Background(), socket, "SAG-IPC-E2E", setup.Resource, uint32(os.Getuid())); e == nil {
 		t.Fatal("unrelated process replayed bootstrap")
 	}
+
+	if strings.HasPrefix(scenario, "idle_") || scenario == "pending_revoke" {
+		assertIdleManagedBrokerStops(t, launch.PID, frontAddress, scenario == "pending_revoke", func() {
+			if scenario == "idle_worker_lost" {
+				stopWorker()
+			} else {
+				fixture(map[string]any{"action": "revoke"})
+			}
+		})
+		rows := query(admin, "SELECT count(*) FROM sys.dm_exec_sessions WHERE login_name='sag_e2e_backend'")
+		if len(rows) != 1 || rows[0][0] != "0" {
+			t.Fatal("idle invalidation retained a backend connection")
+		}
+		return
+	}
 	frontendTLS := &tls.Config{RootCAs: wrongRoots, ServerName: "localhost", MinVersion: tls.VersionTLS12}
 	if conn, e := tdsBackendConnect(context.Background(), frontAddress, frontendTLS, setup.Temporary.Username, "wrong-temporary-password", "sag_mssql_e2e"); e == nil {
 		conn.Close()
@@ -440,6 +455,9 @@ func tdsVaultScenario(t *testing.T, engine, target, scenario string) {
 	for i := 0; i < 50; i++ {
 		rows = query(admin, "SELECT count(*) FROM sys.dm_exec_sessions WHERE login_name='sag_e2e_backend'")
 		if len(rows) == 1 && rows[0][0] == "0" {
+			if scenario != "unsupported_command" {
+				assertManagedBrokerExited(t, launch.PID, frontAddress)
+			}
 			t.Log("both native SQL endpoints closed: " + scenario)
 			return
 		}
