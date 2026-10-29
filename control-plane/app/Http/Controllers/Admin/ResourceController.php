@@ -61,8 +61,6 @@ class ResourceController extends Controller
         $resource = DB::transaction(function () use ($data, $request): DatabaseResource {
             $resource = DatabaseResource::query()->create([
                 ...$this->resourceAttributes($data),
-                'target_tls_mode' => 'prefer',
-                'auth_mode' => 'client_passthrough',
                 'query_audit_enabled' => true,
                 'is_active' => true,
                 'target_options' => [
@@ -165,13 +163,15 @@ class ResourceController extends Controller
                     ->firstOrFail();
 
                 $before = $this->snapshot($locked);
-                $attributes = $this->resourceAttributes($data);
+                $attributes = $this->resourceAttributes($data, $locked);
 
                 $targetFields = [
                     'engine',
                     'target_host',
                     'target_port',
                     'target_database',
+                    'auth_mode',
+                    'target_tls_mode',
                 ];
 
                 $targetChanged = collect($targetFields)->contains(
@@ -373,6 +373,10 @@ class ResourceController extends Controller
             'name' => ['required', 'string', 'min:3', 'max:160', $nameRule],
             'description' => ['nullable', 'string', 'max:5000'],
             'engine' => ['required', Rule::in(array_keys(self::ENGINES))],
+            'auth_mode' => ['sometimes', 'required', Rule::in(
+                config('sag.db_gateway.managed_runtime.enabled') === true || $resource?->auth_mode === 'managed'
+                    ? ['client_passthrough', 'managed'] : ['client_passthrough']
+            )],
             'backend_auth_mode' => ['sometimes', 'required', Rule::in(
                 $request->input('engine') === 'mssql'
                     ? ['mssql_sql_auth', 'mssql_kerberos_service']
@@ -414,7 +418,7 @@ class ResourceController extends Controller
         ]);
     }
 
-    private function resourceAttributes(array $data): array
+    private function resourceAttributes(array $data, ?DatabaseResource $resource = null): array
     {
         $host = trim((string) $data['target_host']);
 
@@ -422,12 +426,16 @@ class ResourceController extends Controller
             $host = strtolower(rtrim($host, '.'));
         }
 
+        $authMode = $data['auth_mode'] ?? ($resource?->auth_mode ?? 'client_passthrough');
+
         return [
             'name' => trim((string) $data['name']),
             'description' => filled($data['description'] ?? null)
                 ? trim((string) $data['description'])
                 : null,
             'engine' => (string) $data['engine'],
+            'auth_mode' => $authMode,
+            'target_tls_mode' => $authMode === 'managed' ? 'verify-full' : ($resource?->target_tls_mode ?? 'prefer'),
             'target_host' => $host,
             'target_port' => (int) $data['target_port'],
             'target_database' => filled($data['target_database'] ?? null)

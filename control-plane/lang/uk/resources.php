@@ -1,6 +1,10 @@
 <?php
 
 return [
+    'gateway_auth' => [
+        'label' => 'Автентифікація Gateway',
+        'notice' => 'Managed-режим використовує окремий тимчасовий SAG login і перевірений TLS до БД. Перед запуском сесії збережіть SQL credential у Vault. Windows Integrated Authentication поки недоступна.',
+    ],
     'backend_auth' => [
         'label' => 'Автентифікація на MSSQL-сервері',
         'sql' => 'SQL Server Authentication',

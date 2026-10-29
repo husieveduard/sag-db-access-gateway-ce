@@ -1,6 +1,10 @@
 <?php
 
 return [
+    'gateway_auth' => [
+        'label' => 'Gateway authentication',
+        'notice' => 'Managed mode uses a separate temporary SAG login and verified TLS to the database. Store a backend SQL credential in the Vault before starting a session. Windows Integrated Authentication remains unavailable.',
+    ],
     'backend_auth' => [
         'label' => 'MSSQL server authentication',
         'sql' => 'SQL Server Authentication',

@@ -2,6 +2,9 @@
 # preparing owner-readable certificates and checking the release gates.
 # The default deploy/compose.yaml never enables managed runtime.
 services:
+  app:
+    environment:
+      SAG_MANAGED_RUNTIME_ENABLED: "true"
   worker:
     environment:
       SAG_MANAGED_RUNTIME_ENABLED: "true"

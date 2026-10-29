@@ -52,6 +52,7 @@ bootstrap, SQL and revocation with loopback listener in APP_ENV=testing.
 The optional `deploy/compose.managed-candidate.yaml` staging overlay mounts
 frontend TLS files and backend CA bundles, creates an owner-only IPC tmpfs,
 and enables the trusted worker within the existing lifecycle worker container.
+It also enables the managed resource form in the app container.
 The worker entrypoint starts and monitors the IPC process only with the explicit
 flag. Set `SAG_CE_MANAGED_CERT_DIR` to an absolute private directory containing
 `frontend.crt`, `frontend.key`, `postgresql-ca.crt`, `mysql-ca.crt`, and
@@ -60,6 +61,14 @@ The certificate must match `SAG_CE_GATEWAY_PUBLIC_HOST`. The backend CA files
 must validate each target's hostname. The overlay is a staging candidate,
 not the default installation path; production activation awaits full release
 acceptance including Windows Integrated Authentication.
+
+With the explicit runtime flag, the resource form can select managed
+authentication. The resource is stored with verified backend TLS and requires
+an encrypted SQL credential in the Vault before launch. The session form issues
+a separate random temporary SAG login for managed resources. Its plaintext
+password appears only on the first authorized session detail response, with
+`Cache-Control: no-store`; only its hash persists in the credential table.
+Persistent sessions and Windows backend mode are rejected for this path.
 
 ## PostgreSQL automatic laboratory launch
 

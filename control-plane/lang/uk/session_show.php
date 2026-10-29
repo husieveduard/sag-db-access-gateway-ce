@@ -1,6 +1,12 @@
 <?php
 
 return [
+    'temporary_credentials' => [
+        'heading' => 'Тимчасові credentials Gateway',
+        'notice' => 'Скопіюйте зараз. Пароль показується один раз і пізніше не відновлюється.',
+        'username' => 'Ім’я користувача',
+        'password' => 'Пароль',
+    ],
     'title' => 'Сесія',
     'back' => '← До списку сесій',
     'pending_operation' => 'операція у черзі',

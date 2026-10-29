@@ -4,6 +4,17 @@
 
 @section('content')
 @php
+    $issuedCredentials = session('managed_temporary_credentials');
+@endphp
+@if (is_array($issuedCredentials) && ($issuedCredentials['session_uid'] ?? null) === $session->public_id)
+    <section class="card form-card">
+        <h2>{{ __('session_show.temporary_credentials.heading') }}</h2>
+        <p class="hint">{{ __('session_show.temporary_credentials.notice') }}</p>
+        <p>{{ __('session_show.temporary_credentials.username') }}: <code>{{ $issuedCredentials['username'] }}</code></p>
+        <p>{{ __('session_show.temporary_credentials.password') }}: <code>{{ $issuedCredentials['password'] }}</code></p>
+    </section>
+@endif
+@php
     $statusClass = match ($session->status) {
         'started' => 'green',
         'starting', 'created', 'stopping' => 'yellow',
