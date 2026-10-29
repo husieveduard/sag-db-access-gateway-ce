@@ -36,13 +36,14 @@ RUN npm run build
 
 FROM golang:1.22-bookworm AS gateway-builder
 
-WORKDIR /src
+WORKDIR /src/db-gateway
 
 COPY db-gateway/go.mod ./
 
 RUN go mod download
 
 COPY db-gateway/ ./
+COPY scripts/build-postgres-lab-broker.sh scripts/build-mysql-lab-broker.sh scripts/build-mssql-lab-broker.sh /src/scripts/
 
 RUN go test ./...
 
@@ -50,6 +51,14 @@ RUN CGO_ENABLED=0 go build \
     -trimpath \
     -ldflags="-s -w" \
     -o /out/sag-db-gateway .
+
+# These are separate native executables with no backend password file or secret
+# baked into the image. The deployment's managed gate remains disabled.
+RUN CGO_ENABLED=0 /src/scripts/build-postgres-lab-broker.sh /out/sag-postgresql-broker \
+    && CGO_ENABLED=0 /src/scripts/build-mysql-lab-broker.sh /out/sag-mysql-broker \
+    && CGO_ENABLED=0 /src/scripts/build-mssql-lab-broker.sh /out/sag-mssql-broker \
+    && CGO_ENABLED=0 go build -o /out/sag-vault-ipc-worker \
+        ipc_worker_lab_main.go postgres_session_ipc_server_linux.go postgres_session_ipc_laravel_linux.go
 
 
 FROM php:8.3-fpm-bookworm AS runtime
@@ -105,6 +114,10 @@ WORKDIR /var/www/html
 COPY --from=vendor /app /var/www/html
 COPY --from=frontend /app/public/build /var/www/html/public/build
 COPY --from=gateway-builder /out/sag-db-gateway /usr/local/bin/sag-db-gateway
+COPY --from=gateway-builder /out/sag-postgresql-broker /usr/local/bin/sag-postgresql-broker
+COPY --from=gateway-builder /out/sag-mysql-broker /usr/local/bin/sag-mysql-broker
+COPY --from=gateway-builder /out/sag-mssql-broker /usr/local/bin/sag-mssql-broker
+COPY --from=gateway-builder /out/sag-vault-ipc-worker /usr/local/bin/sag-vault-ipc-worker
 
 RUN mkdir -p \
         bootstrap/cache \

@@ -23,6 +23,11 @@ surface does not enable Integrated Authentication or production managed mode.
 An explicit Windows backend selection is stored and shown but remains blocked
 until its Kerberos implementation and AD E2E verification are complete.
 
+The CE runtime image now packages the three native broker executables and the
+Unix IPC worker as separate binaries. CI checks their presence and executable
+permissions in the non-root application image. They are not started by the
+existing Production Compose; runtime wiring and release acceptance remain open.
+
 ## PostgreSQL automatic laboratory launch
 
 The normal production launch path is unchanged. The explicit CLI option is:
