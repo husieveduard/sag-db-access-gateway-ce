@@ -17,7 +17,8 @@ final class ResourceCredentialController extends Controller
     public function update(Request $request, DatabaseResource $resource, ResourceCredentialVault $vault): RedirectResponse
     {
         abort_unless($request->user()?->isSuperAdmin(), 403);
-        abort_unless($resource->engine === 'postgresql', 422);
+        abort_unless(in_array($resource->engine, ['postgresql', 'mysql', 'mariadb', 'mssql'], true), 422);
+        abort_unless($resource->usesPasswordBackendAuthentication(), 422, 'SQL password storage is unavailable for the selected backend authentication mode.');
 
         $data = $request->validate([
             'username' => ['required', 'string', 'max:128'],

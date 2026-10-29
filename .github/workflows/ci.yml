@@ -20,15 +20,19 @@ jobs:
         run: ./scripts/preflight-public.sh
 
   php:
-    name: PHP and Laravel lint
+    name: PHP and Laravel lint (PHP ${{ matrix.php }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.3', '8.5']
 
     steps:
       - uses: actions/checkout@v4
 
       - uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.3'
+          php-version: '${{ matrix.php }}'
           extensions: bcmath, ldap, mbstring, pcntl, pdo_pgsql, pdo_sqlite, redis, zip
           coverage: none
 
@@ -111,7 +115,7 @@ jobs:
           DB_PASSWORD: postgres_test_only
         run: |
           mkdir -p storage/framework/views storage/framework/cache/data storage/framework/sessions bootstrap/cache
-          php artisan test --filter='LifecycleHardeningTest|GatewayAuditRedactionTest|ResourceCredentialVaultTest|ResourceCredentialAccessTest'
+          php artisan test --filter='LifecycleHardeningTest|GatewayAuditRedactionTest|ResourceCredentialVaultTest|ResourceCredentialAccessTest|TemporaryGatewayCredentialsTest'
 
   live-gateway:
     name: Real gateway Linux lifecycle
@@ -153,7 +157,27 @@ jobs:
 
       - name: Run gateway tests
         working-directory: db-gateway
-        run: go test ./...
+        run: |
+          go test ./...
+          go test -race -run 'TestIPC|TestPGIPC|TestCredentialClient|TestManagedLifetime|TestPgExtended' -count=1 ./...
+
+      - name: Compile isolated IPC lab worker and probe
+        working-directory: db-gateway
+        run: |
+          go build -o /tmp/sag-ipc-worker-ci \
+            ipc_worker_lab_main.go \
+            postgres_session_ipc_server_linux.go \
+            postgres_session_ipc_laravel_linux.go
+          go build -o /tmp/sag-ipc-probe-ci \
+            ipc_probe_lab_main.go \
+            postgres_session_ipc_probe.go
+          test -x /tmp/sag-ipc-worker-ci
+          test -x /tmp/sag-ipc-probe-ci
+          ../scripts/build-postgres-lab-broker.sh /tmp/sag-vault-broker-ci
+          ../scripts/build-mysql-lab-broker.sh /tmp/sag-mysql-broker-ci
+          ../scripts/build-mssql-lab-broker.sh /tmp/sag-mssql-broker-ci
+          test -x /tmp/sag-mysql-broker-ci
+          test -x /tmp/sag-mssql-broker-ci
 
   docker:
     name: Docker build
@@ -182,3 +206,258 @@ jobs:
             sag-db-access-gateway-ce-nginx -c \
             'test -r /var/www/html/public/css/sag-ce.css && \
              head -c 1 /var/www/html/public/css/sag-ce.css >/dev/null'
+
+      - name: Verify native broker and Unix IPC worker packaging
+        run: |
+          docker run --rm --entrypoint sh sag-db-access-gateway-ce-app -ec '
+            for bin in sag-postgresql-broker sag-mysql-broker sag-mssql-broker sag-vault-ipc-worker; do
+              test -x "/usr/local/bin/$bin"
+            done
+            test "$(id -u)" != 0
+          '
+
+      - name: Validate isolated managed staging overlay
+        run: |
+          sh -n deploy/worker-entrypoint.sh
+          SAG_CE_MANAGED_CERT_DIR=/tmp/sag-managed-candidate-fixture \
+            docker compose --project-directory "$PWD" \
+              --env-file deploy/.env.example \
+              -f deploy/compose.yaml \
+              -f deploy/compose.managed-candidate.yaml \
+              config --quiet
+
+  vault-ipc-sql:
+    name: Laravel Vault Unix IPC SQL E2E (PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.3', '8.5']
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: sag_e2e
+          POSTGRES_PASSWORD: isolated_e2e_admin_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sag_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.x'
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '${{ matrix.php }}'
+          extensions: bcmath, mbstring, pdo_sqlite, zip
+          coverage: none
+      - name: Install Laravel dependencies
+        working-directory: control-plane
+        run: |
+          composer install --no-interaction --prefer-dist --no-progress
+          cp .env.example .env
+          mkdir -p storage/framework/views storage/framework/cache/data storage/framework/sessions bootstrap/cache
+      - name: Verify real Vault IPC broker SQL and revocation
+        working-directory: db-gateway
+        env:
+          SAG_E2E_LARAVEL: '1'
+          SAG_E2E_BROKER_BINARY: /tmp/sag-vault-broker-ci
+          SAG_E2E_POSTGRES: 127.0.0.1:5432
+          SAG_E2E_ADMIN_PASSWORD: isolated_e2e_admin_only
+        run: |
+          ../scripts/build-postgres-lab-broker.sh /tmp/sag-vault-broker-ci
+          go test -v -run '^TestLaravelVaultIPC(PostgresSQL|ParallelBootstrap)$' -count=1 ./...
+
+  postgres-verified-tls-sql:
+    name: PostgreSQL verified TLS Vault SQL E2E
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.x'
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: bcmath, mbstring, pdo_sqlite, zip
+          coverage: none
+      - name: Install Laravel dependencies
+        working-directory: control-plane
+        run: |
+          composer install --no-interaction --prefer-dist --no-progress
+          cp .env.example .env
+          mkdir -p storage/framework/views storage/framework/cache/data storage/framework/sessions bootstrap/cache
+      - name: Start isolated verified-TLS PostgreSQL
+        run: ./scripts/start-postgres-tls-lab.sh
+      - name: Run real managed Vault SQL over verified backend TLS
+        working-directory: db-gateway
+        env:
+          SAG_E2E_BROKER_BINARY: /tmp/sag-vault-broker-ci
+          SAG_E2E_POSTGRES: 127.0.0.1:35432
+          SAG_E2E_POSTGRES_TLS_MODE: verify-full
+          SAG_E2E_USE_RUNTIME: '1'
+          SAG_E2E_ADMIN_PASSWORD: isolated_e2e_admin_only
+        run: |
+          export SAG_E2E_POSTGRES_CA="$GITHUB_WORKSPACE/.work/postgres-lab-tls/ca.crt"
+          ../scripts/build-postgres-lab-broker.sh "$SAG_E2E_BROKER_BINARY"
+          go test -v -run '^TestLaravelVaultIPCPostgresSQL$' -count=1 -timeout=4m ./...
+      - name: Diagnose isolated PostgreSQL failure
+        if: failure()
+        run: docker logs --tail 100 sag-pr21-pg-tls || true
+      - name: Remove disposable PostgreSQL
+        if: always()
+        run: |
+          docker rm -fv sag-pr21-pg-tls || true
+          docker network rm sag-pr21-pg-tls-net || true
+
+  mysql-vault-ipc-sql:
+    name: MySQL 8.4 and MariaDB 11.4 Vault SQL E2E (PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.3', '8.5']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.x'
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '${{ matrix.php }}'
+          extensions: bcmath, mbstring, pdo_sqlite, zip
+          coverage: none
+      - name: Install Laravel dependencies
+        working-directory: control-plane
+        run: |
+          composer install --no-interaction --prefer-dist --no-progress
+          cp .env.example .env
+          mkdir -p storage/framework/views storage/framework/cache/data storage/framework/sessions bootstrap/cache
+      - name: Start isolated verified-TLS databases
+        env:
+          SAG_LAB_PUBLISH_PORTS: '1'
+        run: ./scripts/start-mysql-lab.sh
+      - name: Build native adapter and verify SQL lifecycle
+        working-directory: db-gateway
+        env:
+          SAG_E2E_MYSQL_TARGET: 127.0.0.1:33306
+          SAG_E2E_MARIADB_TARGET: 127.0.0.1:33307
+          SAG_E2E_MYSQL_BROKER_BINARY: /tmp/sag-mysql-broker-ci
+        run: |
+          export SAG_E2E_MYSQL_CA="$GITHUB_WORKSPACE/.work/mysql-lab-tls/ca.crt"
+          ../scripts/build-mysql-lab-broker.sh /tmp/sag-mysql-broker-ci
+          go test -v -run '^TestMySQLMariaDBVaultSQL$' -count=1 -timeout=8m ./...
+      - name: Remove disposable databases
+        if: always()
+        run: |
+          docker rm -f sag-pr21-mysql sag-pr21-mariadb || true
+          docker network rm sag-pr21-mysql-lab || true
+
+  mssql-vault-ipc-sql:
+    name: SQL Server 2022 Vault SQL E2E (PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.3', '8.5']
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.x'
+          cache-dependency-path: db-gateway/go.sum
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '${{ matrix.php }}'
+          extensions: bcmath, mbstring, pdo_sqlite, zip
+          coverage: none
+      - name: Install Laravel dependencies
+        working-directory: control-plane
+        run: |
+          composer install --no-interaction --prefer-dist --no-progress
+          cp .env.example .env
+          mkdir -p storage/framework/views storage/framework/cache/data storage/framework/sessions bootstrap/cache
+      - name: Start isolated verified-TLS SQL Server Developer
+        env:
+          SAG_LAB_PUBLISH_PORTS: '1'
+        run: ./scripts/start-mssql-lab.sh
+      - name: Build native TDS adapter and verify SQL lifecycle
+        working-directory: db-gateway
+        env:
+          SAG_E2E_MSSQL_TARGET: 127.0.0.1:31433
+          SAG_E2E_MSSQL_BROKER_BINARY: /tmp/sag-mssql-broker-ci
+        run: |
+          export SAG_E2E_MSSQL_CA="$GITHUB_WORKSPACE/.work/mssql-lab-tls/ca.crt"
+          ../scripts/build-mssql-lab-broker.sh /tmp/sag-mssql-broker-ci
+          go test -v -run '^TestMSSQLVaultSQL$' -count=1 -timeout=6m ./...
+      - name: Diagnose isolated database failure
+        if: failure()
+        run: docker logs --tail 60 sag-pr21-mssql || true
+      - name: Remove disposable SQL Server
+        if: always()
+        run: |
+          docker rm -f sag-pr21-mssql || true
+          docker network rm sag-pr21-mssql-lab || true
+
+  vault-worker-pid1:
+    name: PID 1 Vault worker SQL (PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.3', '8.5']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.x'
+          cache-dependency-path: db-gateway/go.sum
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '${{ matrix.php }}'
+          extensions: mbstring, pdo_sqlite
+          coverage: none
+      - name: Install Laravel dependencies
+        working-directory: control-plane
+        run: |
+          composer install --no-interaction --prefer-dist --no-progress
+          cp .env.example .env
+          mkdir -p storage/framework/views storage/framework/cache/data storage/framework/sessions bootstrap/cache
+      - name: Start isolated PostgreSQL for PID namespace test
+        run: |
+          docker network create --internal sag-pr21-pid1-net
+          docker run -d --name sag-pr21-pid1-postgres --network sag-pr21-pid1-net --network-alias postgres \
+            -e POSTGRES_DB=sag_e2e -e POSTGRES_PASSWORD=isolated_pid1_admin_only postgres:16-alpine
+          for attempt in $(seq 1 60); do
+            if docker exec sag-pr21-pid1-postgres pg_isready -U postgres -d sag_e2e; then exit 0; fi
+            sleep 1
+          done
+          exit 1
+      - name: Build static worker test and native broker
+        working-directory: db-gateway
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          mkdir -p ../.work
+          go test -c -o ../.work/pid1-tests-ci
+          ../scripts/build-postgres-lab-broker.sh "$GITHUB_WORKSPACE/.work/pid1-broker-ci"
+      - name: Verify managed SQL with the Unix worker as PID 1
+        run: |
+          docker run --rm --name sag-pr21-pid1-client --network sag-pr21-pid1-net \
+            -v "$GITHUB_WORKSPACE:/src" -w /src/db-gateway \
+            -e SAG_E2E_POSTGRES=postgres:5432 -e SAG_E2E_ADMIN_PASSWORD=isolated_pid1_admin_only \
+            -e SAG_E2E_BROKER_BINARY=/src/.work/pid1-broker-ci -e SAG_E2E_REQUIRE_WORKER_PID1=1 \
+            php:${{ matrix.php }}-cli-alpine /src/.work/pid1-tests-ci \
+            -test.v -test.run '^TestLaravelVaultIPCPostgresSQL$/^managed_' -test.timeout 3m
+      - name: Remove isolated PID namespace test resources
+        if: always()
+        run: |
+          docker rm -f sag-pr21-pid1-client sag-pr21-pid1-postgres || true
+          docker network rm sag-pr21-pid1-net || true

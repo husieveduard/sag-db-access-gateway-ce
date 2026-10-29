@@ -26,6 +26,38 @@ return [
     ],
 
     'db_gateway' => [
+        // Explicit development/test opt-in. Production always refuses this path.
+        'managed_lab' => [
+            'enabled' => filter_var(env('SAG_LAB_MANAGED_BROKER_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+            'mssql_binary' => env('SAG_LAB_MSSQL_BROKER_BINARY', ''),
+            'mssql_ca' => env('SAG_LAB_MSSQL_BACKEND_CA', ''),
+            'mysql_binary' => env('SAG_LAB_MYSQL_BROKER_BINARY', ''),
+            'mysql_ca' => env('SAG_LAB_MYSQL_BACKEND_CA', ''),
+            'postgresql_binary' => env('SAG_LAB_POSTGRES_BROKER_BINARY', ''),
+            'postgresql_ca' => env('SAG_LAB_POSTGRES_BACKEND_CA', ''),
+            'socket' => env('SAG_LAB_VAULT_SOCKET', ''),
+            'worker_uid' => env('SAG_LAB_WORKER_UID'),
+            'cert' => env('SAG_LAB_BROKER_CERT', ''),
+            'key' => env('SAG_LAB_BROKER_KEY', ''),
+        ],
+        // Separate explicit native runtime. The existing Compose does not set
+        // this flag or start the trusted IPC worker.
+        'managed_runtime' => [
+            'enabled' => filter_var(env('SAG_MANAGED_RUNTIME_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+            'postgresql_binary' => env('SAG_MANAGED_POSTGRES_BROKER_BINARY', '/usr/local/bin/sag-postgresql-broker'),
+            'postgresql_ca' => env('SAG_MANAGED_POSTGRES_BACKEND_CA', ''),
+            'mysql_binary' => env('SAG_MANAGED_MYSQL_BROKER_BINARY', '/usr/local/bin/sag-mysql-broker'),
+            'mysql_ca' => env('SAG_MANAGED_MYSQL_BACKEND_CA', ''),
+            'mssql_binary' => env('SAG_MANAGED_MSSQL_BROKER_BINARY', '/usr/local/bin/sag-mssql-broker'),
+            'mssql_ca' => env('SAG_MANAGED_MSSQL_BACKEND_CA', ''),
+            'socket' => env('SAG_MANAGED_VAULT_SOCKET', '/run/sag-db-gateway/ipc/worker.sock'),
+            'worker_uid' => env('SAG_MANAGED_WORKER_UID'),
+            'cert' => env('SAG_MANAGED_BROKER_CERT', ''),
+            'key' => env('SAG_MANAGED_BROKER_KEY', ''),
+            'listen_host' => env('SAG_MANAGED_LISTEN_HOST', '0.0.0.0'),
+            'public_host' => env('SAG_MANAGED_PUBLIC_HOST', env('SAG_DB_GATEWAY_PUBLIC_HOST')),
+            'control_host' => env('SAG_MANAGED_CONTROL_HOST', 'nginx'),
+        ],
         'binary' => env('SAG_DB_GATEWAY_BINARY', '/usr/local/bin/sag-db-gateway'),
         'control_plane_url' => env('SAG_GATEWAY_CONTROL_PLANE_URL', 'http://nginx'),
         'log_dir' => env('SAG_DB_GATEWAY_LOG_DIR', '/var/lib/sag/db-gateway/logs'),

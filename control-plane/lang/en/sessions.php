@@ -87,6 +87,7 @@ return [
 
         'db_username' => 'Database username',
         'db_username_hint' => 'Used for auditing only. The database password is not stored.',
+        'managed_username_hint' => 'For a managed resource, leave this blank; SAG generates a temporary login.',
 
         'created_note' => 'The new session is created with the status',
         'created_action' => 'To open a gateway endpoint and allocate a port, select',

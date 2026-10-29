@@ -51,6 +51,53 @@ class LifecycleHardeningTest extends TestCase
         };
     }
 
+    public function test_connection_started_callback_cannot_activate_created_session(): void
+    {
+        config()->set('sag.internal_token', 'test-internal-token');
+        $session = $this->makeGatewaySession('created');
+
+        $this->withHeader('X-SAG-Internal-Token', 'test-internal-token')
+            ->postJson('/api/internal/db/connection-started', [
+                'session_uid' => $session->public_id,
+                'connection_uid' => 'CONN-UNSTARTED-TEST',
+                'db_engine' => 'postgresql',
+            ])->assertStatus(409)->assertJsonPath('error', 'session_not_allowed');
+
+        $this->assertSame('created', $session->fresh()->status);
+        $this->assertDatabaseMissing('db_connections', [
+            'public_id' => 'CONN-UNSTARTED-TEST',
+        ]);
+    }
+
+    public function test_deactivated_resource_rejects_connection_started_callback(): void
+    {
+        config()->set('sag.internal_token', 'test-internal-token');
+        $session = $this->makeGatewaySession('starting');
+        $session->resource->update(['is_active' => false]);
+
+        $this->withHeader('X-SAG-Internal-Token', 'test-internal-token')
+            ->postJson('/api/internal/db/connection-started', [
+                'session_uid' => $session->public_id,
+                'connection_uid' => 'CONN-INACTIVE-RESOURCE',
+                'db_engine' => 'postgresql',
+            ])->assertStatus(409)->assertJsonPath('error', 'resource_inactive');
+
+        $this->assertSame('starting', $session->fresh()->status);
+        $this->assertDatabaseMissing('db_connections', [
+            'public_id' => 'CONN-INACTIVE-RESOURCE',
+        ]);
+    }
+
+    public function test_managed_auth_cannot_fall_back_to_passthrough(): void
+    {
+        $session = $this->makeGatewaySession('created');
+        $session->resource->forceFill(['auth_mode' => 'managed'])->save();
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('refusing passthrough fallback');
+        (new DbGatewayLifecycleService())->start($session);
+    }
+
     public function test_failed_termination_keeps_nonterminal_state_and_preserves_open_activity(): void
     {
         $session = $this->makeGatewaySession();

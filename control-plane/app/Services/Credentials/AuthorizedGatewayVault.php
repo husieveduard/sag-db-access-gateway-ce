@@ -1,0 +1,240 @@
+<?php
+
+namespace App\Services\Credentials;
+
+use App\Models\DbAccessSession;
+use DomainException;
+use Illuminate\Support\Facades\DB;
+
+final class AuthorizedGatewayVault
+{
+    /**
+     * Non-secret authorization for a specific IPC session/resource pair.
+     * The caller must authenticate the IPC peer independently.
+     */
+    public function isActiveSessionResource(string $sessionUid, int $resourceId): bool
+    {
+        if ($sessionUid === '' || $resourceId < 1) {
+            return false;
+        }
+        $session = DbAccessSession::query()->with('resource')
+            ->where('public_id', $sessionUid)
+            ->where('resource_id', $resourceId)
+            ->first();
+        return $session !== null
+            && $session->mode === 'temporary'
+            && $session->status === 'started'
+            && $session->expires_at !== null
+            && $session->expires_at->isFuture()
+            && $session->resource?->is_active === true
+            && $session->resource->usesPasswordBackendAuthentication();
+    }
+
+    /** Live non-secret gate, still bound to the originally bootstrapped process. */
+    public function isActiveSessionBoundToProcess(
+        string $sessionUid, int $resourceId, int $peerPid, string $peerStartTicks,
+    ): bool {
+        if ($sessionUid === '' || $resourceId < 1 || $peerPid < 2
+            || $peerStartTicks === '' || !ctype_digit($peerStartTicks)) {
+            return false;
+        }
+        $session = DbAccessSession::query()->with('resource')->where('public_id', $sessionUid)
+            ->where('resource_id', $resourceId)->first();
+        return $session !== null
+            && $session->mode === 'temporary' && $session->status === 'started'
+            && $session->expires_at !== null && $session->expires_at->isFuture()
+            && $session->resource?->is_active === true
+            && $session->resource->usesPasswordBackendAuthentication()
+            && data_get($session->metadata, 'db.bootstrap_consumed_at') !== null
+            && (int) data_get($session->metadata, 'db.gateway_pid', 0) === $peerPid
+            && is_string($ticks = data_get($session->metadata, 'db.gateway_proc_start_ticks'))
+            && hash_equals($ticks, $peerStartTicks);
+    }
+
+    /**
+     * Non-secret bootstrap eligibility, not a credential-granting API.
+     * The trusted IPC server must independently authenticate the OS peer
+     * and obtain its PID/start ticks from the kernel, never from JSON.
+     * The session's stored identity is set by the controlled launcher.
+     */
+    public function isStartingSessionBoundToProcess(
+        string $sessionUid,
+        int $resourceId,
+        int $peerPid,
+        string $peerStartTicks,
+    ): bool {
+        if ($sessionUid === '' || $resourceId < 1 || $peerPid < 2
+            || $peerStartTicks === '' || ! ctype_digit($peerStartTicks)) {
+            return false;
+        }
+
+        $session = DbAccessSession::query()->with('resource')
+            ->where('public_id', $sessionUid)
+            ->where('resource_id', $resourceId)
+            ->first();
+
+        if ($session === null || $session->mode !== 'temporary'
+            || $session->status !== 'starting'
+            || $session->expires_at === null || ! $session->expires_at->isFuture()
+            || $session->resource?->is_active !== true
+            || ! $session->resource->usesPasswordBackendAuthentication()) {
+            return false;
+        }
+
+        $pid = data_get($session->metadata, 'db.gateway_pid');
+        $ticks = data_get($session->metadata, 'db.gateway_proc_start_ticks');
+
+        return is_numeric($pid) && (int) $pid === $peerPid
+            && is_string($ticks) && $ticks !== ''
+            && hash_equals($ticks, $peerStartTicks);
+    }
+
+    /**
+     * Atomically consume the non-secret initial bootstrap gate once.
+     * This method does not return Vault credentials and is NOT sufficient
+     * as standalone IPC authentication.
+     */
+    public function consumeStartingProcessBootstrap(
+        string $sessionUid, int $resourceId, int $peerPid, string $peerStartTicks,
+    ): bool {
+        return DB::transaction(function () use ($sessionUid, $resourceId, $peerPid, $peerStartTicks): bool {
+            $session = DbAccessSession::query()
+                ->where('public_id', $sessionUid)
+                ->where('resource_id', $resourceId)
+                ->lockForUpdate()->first();
+
+            if ($session === null
+                || data_get($session->metadata, 'db.bootstrap_consumed_at') !== null
+                || ! $this->isStartingSessionBoundToProcess(
+                    $sessionUid, $resourceId, $peerPid, $peerStartTicks
+                )) {
+                return false;
+            }
+
+            $metadata = is_array($session->metadata) ? $session->metadata : [];
+            $db = is_array($metadata['db'] ?? null) ? $metadata['db'] : [];
+            $db['bootstrap_consumed_at'] = now()->toIso8601String();
+            $metadata['db'] = $db;
+            $session->forceFill(['metadata' => $metadata])->save();
+
+            return true;
+        }, 3);
+    }
+
+    /**
+     * Single atomic starting-session grant for a locally authenticated
+     * gateway process. Never expose this entry point to an HTTP controller.
+     * The caller must verify SO_PEERCRED and /proc start ticks independently.
+     *
+     * @return array{username:string,password:string}
+     */
+    public function takeBootstrapCredentials(
+        string $sessionUid, int $resourceId, int $peerPid,
+        string $peerStartTicks, ResourceCredentialVault $vault,
+    ): array {
+        return DB::transaction(function () use ($sessionUid, $resourceId, $peerPid, $peerStartTicks, $vault): array {
+            $session = DbAccessSession::query()
+                ->where('public_id', $sessionUid)
+                ->where('resource_id', $resourceId)
+                ->lockForUpdate()->first();
+
+            if ($session === null
+                || data_get($session->metadata, 'db.bootstrap_consumed_at') !== null
+                || ! $this->isStartingSessionBoundToProcess(
+                    $sessionUid, $resourceId, $peerPid, $peerStartTicks
+                )) {
+                throw new DomainException('Gateway bootstrap is not authorized.');
+            }
+
+            $credentials = $vault->retrieveForGateway($resourceId);
+            if ($credentials === null || $credentials['username'] === ''
+                || $credentials['password'] === '') {
+                throw new DomainException('Backend credentials are unavailable.');
+            }
+
+            $metadata = is_array($session->metadata) ? $session->metadata : [];
+            $db = is_array($metadata['db'] ?? null) ? $metadata['db'] : [];
+            $db['bootstrap_consumed_at'] = now()->toIso8601String();
+            $metadata['db'] = $db;
+            $session->forceFill(['metadata' => $metadata])->save();
+
+            return $credentials;
+        }, 3);
+    }
+
+    /**
+     * Bound credential lookup for a trusted local IPC worker.
+     * The worker must independently authenticate its Unix peer.
+     *
+     * @return array{username:string,password:string}
+     */
+    public function forBoundActiveSession(
+        string $sessionUid,
+        int $resourceId,
+        ResourceCredentialVault $vault,
+    ): array {
+        if (! $this->isActiveSessionResource($sessionUid, $resourceId)) {
+            throw new DomainException('Gateway session is not authorized.');
+        }
+
+        // Revalidate the session at secret retrieval; never trust a previous
+        // IPC allow response as an indefinite authorization grant.
+        $session = DbAccessSession::query()->with('resource')
+            ->where('public_id', $sessionUid)
+            ->where('resource_id', $resourceId)
+            ->first();
+
+        if ($session === null
+            || $session->mode !== 'temporary'
+            || $session->status !== 'started'
+            || $session->expires_at === null
+            || $session->expires_at->isPast()
+            || ! $session->resource?->is_active
+            || ! $session->resource->usesPasswordBackendAuthentication()) {
+            throw new DomainException('Gateway session is not authorized.');
+        }
+
+        $credentials = $vault->retrieveForGateway($resourceId);
+        if ($credentials === null
+            || $credentials['username'] === ''
+            || $credentials['password'] === '') {
+            throw new DomainException('Backend credentials are unavailable.');
+        }
+
+        return $credentials;
+    }
+
+    /**
+     * Resolve backend credentials only after checking the active session and
+     * the resource bound to that session. Never expose this method in routes.
+     *
+     * @return array{username:string,password:string}
+     */
+    public function forActiveSession(string $sessionUid, ResourceCredentialVault $vault): array
+    {
+        $session = DbAccessSession::query()
+            ->with('resource')
+            ->where('public_id', $sessionUid)
+            ->first();
+
+        if ($session === null
+            || $session->mode !== 'temporary'
+            || $session->status !== 'started'
+            || $session->expires_at === null
+            || $session->expires_at->isPast()
+            || !$session->resource?->is_active
+            || ! $session->resource->usesPasswordBackendAuthentication()) {
+            throw new DomainException('Gateway session is not authorized.');
+        }
+
+        $credentials = $vault->retrieveForGateway((int) $session->resource_id);
+
+        if ($credentials === null
+            || $credentials['username'] === ''
+            || $credentials['password'] === '') {
+            throw new DomainException('Backend credentials are unavailable.');
+        }
+
+        return $credentials;
+    }
+}

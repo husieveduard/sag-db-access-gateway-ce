@@ -1,6 +1,16 @@
 <?php
 
 return [
+    'gateway_auth' => [
+        'label' => 'Автентифікація Gateway',
+        'notice' => 'Managed-режим використовує окремий тимчасовий SAG login і перевірений TLS до БД. Перед запуском сесії збережіть SQL credential у Vault. Windows Integrated Authentication поки недоступна.',
+    ],
+    'backend_auth' => [
+        'label' => 'Автентифікація на MSSQL-сервері',
+        'sql' => 'SQL Server Authentication',
+        'windows' => 'Windows Integrated Authentication (службовий AD-акаунт; ще недоступна)',
+        'notice' => 'Визначає підключення Gateway до MSSQL-сервера. Інші СУБД використовують пароль. Windows-режим можна зберегти, але підключення буде заблоковано до реалізації та перевірки Kerberos-адаптера. Тимчасові SAG credentials є окремими.',
+    ],
     'title' => 'Ресурси БД',
     'heading' => 'Ресурси баз даних',
     'subtitle' => 'Цільові бази даних, доступні для створення gateway-сесій.',

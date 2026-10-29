@@ -121,6 +121,11 @@
             @enderror
         </div>
 
+        @include('admin.resources.partials.backend-auth')
+        @if (config('sag.db_gateway.managed_runtime.enabled') === true || $resource->auth_mode === 'managed')
+            @include('admin.resources.partials.gateway-auth')
+        @endif
+
         <div class="full">
             <label for="target_database">
                 {{ __('resources.edit_page.database') }}
@@ -173,7 +178,7 @@
     </div>
 </form>
 
-@if (auth()->user()->isSuperAdmin() && $resource->engine === 'postgresql')
+@if (auth()->user()->isSuperAdmin() && $resource->usesPasswordBackendAuthentication() && in_array($resource->engine, ['postgresql', 'mysql', 'mariadb', 'mssql'], true))
 <section class="card form-card">
     <h2>{{ __('resources.credential_vault.heading') }}</h2>
     <p class="hint">{{ __('resources.credential_vault.notice') }}</p>

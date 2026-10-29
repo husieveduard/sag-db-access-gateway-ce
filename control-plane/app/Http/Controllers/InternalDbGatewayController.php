@@ -42,7 +42,7 @@ class InternalDbGatewayController extends Controller
             ], 410);
         }
 
-        if (!in_array($session->status, ['created', 'starting', 'started'], true)) {
+        if (!in_array($session->status, ['starting', 'started'], true)) {
             return response()->json([
                 'ok' => false,
                 'error' => 'session_not_allowed',
@@ -51,6 +51,16 @@ class InternalDbGatewayController extends Controller
         }
 
         $resource = $session->resource;
+
+        // A disabled resource cannot become reachable through a late or
+        // replayed gateway callback, regardless of its session status.
+        if ($resource === null || ! $resource->is_active) {
+            return response()->json([
+                'ok' => false,
+                'error' => 'resource_inactive',
+            ], 409);
+        }
+
         $engine = $this->normalizeEngine($data['db_engine']);
 
         if ($engine !== $this->normalizeEngine($resource->engine)) {

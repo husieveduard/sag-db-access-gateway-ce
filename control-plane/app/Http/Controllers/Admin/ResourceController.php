@@ -61,13 +61,12 @@ class ResourceController extends Controller
         $resource = DB::transaction(function () use ($data, $request): DatabaseResource {
             $resource = DatabaseResource::query()->create([
                 ...$this->resourceAttributes($data),
-                'target_tls_mode' => 'prefer',
-                'auth_mode' => 'client_passthrough',
                 'query_audit_enabled' => true,
                 'is_active' => true,
                 'target_options' => [
                     'created_via' => 'web_console',
                     'credential_storage' => 'none',
+                    'backend_auth_mode' => $this->backendAuthMode($data),
                 ],
                 'created_by_user_id' => $request->user()->id,
             ]);
@@ -143,7 +142,7 @@ class ResourceController extends Controller
         return view('admin.resources.edit', [
             'resource' => $resource,
             'engines' => self::ENGINES,
-            'vaultCredential' => auth()->user()->isSuperAdmin() && $resource->engine === 'postgresql'
+            'vaultCredential' => auth()->user()->isSuperAdmin() && in_array($resource->engine, ['postgresql', 'mysql', 'mariadb', 'mssql'], true)
                 ? DatabaseResourceCredential::query()->where('resource_id', $resource->id)->first(['username', 'updated_at'])
                 : null,
         ]);
@@ -164,13 +163,15 @@ class ResourceController extends Controller
                     ->firstOrFail();
 
                 $before = $this->snapshot($locked);
-                $attributes = $this->resourceAttributes($data);
+                $attributes = $this->resourceAttributes($data, $locked);
 
                 $targetFields = [
                     'engine',
                     'target_host',
                     'target_port',
                     'target_database',
+                    'auth_mode',
+                    'target_tls_mode',
                 ];
 
                 $targetChanged = collect($targetFields)->contains(
@@ -178,10 +179,12 @@ class ResourceController extends Controller
                         (string) ($before[$field] ?? '')
                         !== (string) ($attributes[$field] ?? '')
                 );
+                $backendAuthMode = $this->backendAuthMode($data, $locked);
+                $targetChanged = $targetChanged || $backendAuthMode !== $locked->backendAuthMode();
 
                 $activeGatewaySessions = DbAccessSession::query()
                     ->where('resource_id', $locked->id)
-                    ->whereIn('status', self::ACTIVE_GATEWAY_STATUSES)
+                    ->whereIn('status', [...self::ACTIVE_GATEWAY_STATUSES, 'stopping'])
                     ->count();
 
                 if ($targetChanged && $activeGatewaySessions > 0) {
@@ -196,7 +199,7 @@ class ResourceController extends Controller
                         is_array($locked->target_options)
                             ? $locked->target_options
                             : [],
-                        ['updated_via' => 'web_console'],
+                        ['updated_via' => 'web_console', 'backend_auth_mode' => $backendAuthMode],
                     ),
                 ])->save();
 
@@ -370,6 +373,15 @@ class ResourceController extends Controller
             'name' => ['required', 'string', 'min:3', 'max:160', $nameRule],
             'description' => ['nullable', 'string', 'max:5000'],
             'engine' => ['required', Rule::in(array_keys(self::ENGINES))],
+            'auth_mode' => ['sometimes', 'required', Rule::in(
+                config('sag.db_gateway.managed_runtime.enabled') === true || $resource?->auth_mode === 'managed'
+                    ? ['client_passthrough', 'managed'] : ['client_passthrough']
+            )],
+            'backend_auth_mode' => ['sometimes', 'required', Rule::in(
+                $request->input('engine') === 'mssql'
+                    ? ['mssql_sql_auth', 'mssql_kerberos_service']
+                    : ['stored_password', 'mssql_sql_auth']
+            )],
             'target_host' => [
                 'required',
                 'string',
@@ -406,7 +418,7 @@ class ResourceController extends Controller
         ]);
     }
 
-    private function resourceAttributes(array $data): array
+    private function resourceAttributes(array $data, ?DatabaseResource $resource = null): array
     {
         $host = trim((string) $data['target_host']);
 
@@ -414,18 +426,32 @@ class ResourceController extends Controller
             $host = strtolower(rtrim($host, '.'));
         }
 
+        $authMode = $data['auth_mode'] ?? ($resource?->auth_mode ?? 'client_passthrough');
+
         return [
             'name' => trim((string) $data['name']),
             'description' => filled($data['description'] ?? null)
                 ? trim((string) $data['description'])
                 : null,
             'engine' => (string) $data['engine'],
+            'auth_mode' => $authMode,
+            'target_tls_mode' => $authMode === 'managed' ? 'verify-full' : ($resource?->target_tls_mode ?? 'prefer'),
             'target_host' => $host,
             'target_port' => (int) $data['target_port'],
             'target_database' => filled($data['target_database'] ?? null)
                 ? trim((string) $data['target_database'])
                 : null,
         ];
+    }
+
+    private function backendAuthMode(array $data, ?DatabaseResource $resource = null): string
+    {
+        if ($data['engine'] !== 'mssql') {
+            return 'stored_password';
+        }
+
+        return $data['backend_auth_mode'] ?? ($resource?->engine === 'mssql'
+            ? $resource->backendAuthMode() : 'mssql_sql_auth');
     }
 
     private function snapshot(DatabaseResource $resource): array
@@ -439,6 +465,7 @@ class ResourceController extends Controller
             'target_database' => $resource->target_database,
             'target_tls_mode' => $resource->target_tls_mode,
             'auth_mode' => $resource->auth_mode,
+            'backend_auth_mode' => $resource->backendAuthMode(),
             'query_audit_enabled' => (bool) $resource->query_audit_enabled,
             'is_active' => (bool) $resource->is_active,
         ];

@@ -109,6 +109,11 @@
             @enderror
         </div>
 
+        @include('admin.resources.partials.backend-auth')
+        @if (config('sag.db_gateway.managed_runtime.enabled') === true)
+            @include('admin.resources.partials.gateway-auth')
+        @endif
+
         <div class="full">
             <label for="target_database">
                 {{ __('resources.create_page.database') }}

@@ -1,6 +1,16 @@
 <?php
 
 return [
+    'gateway_auth' => [
+        'label' => 'Gateway authentication',
+        'notice' => 'Managed mode uses a separate temporary SAG login and verified TLS to the database. Store a backend SQL credential in the Vault before starting a session. Windows Integrated Authentication remains unavailable.',
+    ],
+    'backend_auth' => [
+        'label' => 'MSSQL server authentication',
+        'sql' => 'SQL Server Authentication',
+        'windows' => 'Windows Integrated Authentication (AD service account; not available yet)',
+        'notice' => 'Applies to MSSQL gateway-to-server connections. Other engines use password authentication. Windows mode can be saved, but connections remain blocked until the Kerberos adapter is implemented and verified. SAG temporary credentials are separate.',
+    ],
     'title' => 'Database resources',
     'heading' => 'Database Resources',
     'subtitle' => 'Target databases available for creating gateway sessions.',
