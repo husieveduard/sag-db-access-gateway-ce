@@ -21,6 +21,12 @@ class DbGatewayLifecycleService
         if (! $resource->usesPasswordBackendAuthentication()) {
             throw new RuntimeException('Selected backend authentication adapter is not implemented; refusing SQL authentication fallback.');
         }
+        if ($resource->auth_mode === 'managed'
+            && $session->mode === 'temporary'
+            && app()->environment('local', 'testing')
+            && config('sag.db_gateway.managed_lab.enabled') === true) {
+            return app(LabManagedBrokerLifecycleService::class)->start($session);
+        }
         // Managed authentication must never downgrade to client passthrough.
         // Enable it only after the native temporary-credential broker is
         // integrated for this engine and has passed end-to-end tests.

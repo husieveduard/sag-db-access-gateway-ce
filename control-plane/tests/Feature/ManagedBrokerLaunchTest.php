@@ -6,6 +6,7 @@ use App\Models\DatabaseResource;
 use App\Models\DbAccessSession;
 use App\Models\User;
 use App\Services\DbAccess\LabManagedBrokerLifecycleService;
+use App\Services\DbAccess\DbGatewayLifecycleService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use RuntimeException;
 use Tests\TestCase;
@@ -36,6 +37,36 @@ final class ManagedBrokerLaunchTest extends TestCase
             $this->fail('Disabled lab launcher started.');
         } catch (RuntimeException $e) {
             $this->assertSame('Managed laboratory broker is disabled in this environment.', $e->getMessage());
+        }
+        $this->assertSame('created', $session->fresh()->status);
+    }
+
+    public function test_normal_start_routes_managed_temporary_session_to_native_lab_when_explicitly_enabled(): void
+    {
+        $session = $this->makeLaunchSession();
+        config()->set('sag.db_gateway.managed_lab.enabled', true);
+        try {
+            app(DbGatewayLifecycleService::class)->start($session);
+            $this->fail('Missing native binary/socket unexpectedly launched.');
+        } catch (RuntimeException $e) {
+            $this->assertSame('Managed laboratory broker configuration is invalid.', $e->getMessage());
+        }
+        $this->assertSame('created', $session->fresh()->status);
+        $this->assertNull($session->fresh()->gateway_port);
+    }
+
+    public function test_normal_start_does_not_route_lab_in_production(): void
+    {
+        $session = $this->makeLaunchSession();
+        config()->set('sag.db_gateway.managed_lab.enabled', true);
+        $this->app->detectEnvironment(fn () => 'production');
+        try {
+            app(DbGatewayLifecycleService::class)->start($session);
+            $this->fail('Production accepted lab launcher.');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('refusing passthrough fallback', $e->getMessage());
+        } finally {
+            $this->app->detectEnvironment(fn () => 'testing');
         }
         $this->assertSame('created', $session->fresh()->status);
     }

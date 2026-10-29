@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Services\Credentials\ResourceCredentialVault;
 use App\Services\Credentials\TemporaryGatewayCredentials;
 use App\Services\DbAccess\LabManagedBrokerLifecycleService;
+use App\Services\DbAccess\DbGatewayLifecycleService;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\Artisan;
 
@@ -57,7 +58,8 @@ if ($input['action'] === 'setup') {
     $session = DbAccessSession::query()->where('public_id', 'SAG-IPC-E2E')->firstOrFail();
     if ($input['action'] === 'launch') {
         try {
-            $result = app(LabManagedBrokerLifecycleService::class)->start($session);
+            // Exercise the same start path used by queued application operations.
+            $result = app(DbGatewayLifecycleService::class)->start($session);
             echo json_encode($result + ['status' => $session->fresh()->status,
                 'bootstrap_consumed' => data_get($session->fresh()->metadata, 'db.bootstrap_consumed_at') !== null]);
         } catch (Throwable $e) {

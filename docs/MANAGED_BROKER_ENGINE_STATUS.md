@@ -31,6 +31,12 @@ The normal production launch path is unchanged. The explicit CLI option is:
 php artisan sag:db-start-session SESSION --managed-lab
 ```
 
+With the same local/testing opt-in enabled, the normal lifecycle start also
+routes temporary managed sessions to this native launcher. This lets queued
+application operations use the verified bootstrap path. The isolated SQL E2E
+fixture exercises the normal lifecycle start for all three adapters. Production
+still refuses managed mode until a separately packaged, tested runtime is ready.
+
 It requires Linux, APP_ENV=local/testing and SAG_LAB_MANAGED_BROKER_ENABLED=true.
 Configure SAG_LAB_POSTGRES_BROKER_BINARY, SAG_LAB_VAULT_SOCKET,
 SAG_LAB_BROKER_CERT, SAG_LAB_BROKER_KEY and optionally SAG_LAB_WORKER_UID. Start the
