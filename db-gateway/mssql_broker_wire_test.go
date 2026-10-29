@@ -39,6 +39,9 @@ func tdsTestBatch(sql string) []byte {
 	return append(p, tdsUTF16(sql)...)
 }
 func TestTDSFramingAndLoginBoundaries(t *testing.T) {
+	if enc, e := tdsPreloginEncryption([]byte{1, 0, 11, 0, 1, 3, 0, 12, 0, 0, 0xff, 1}); e != nil || enc != 1 {
+		t.Fatal("valid empty deprecated THREADID denied")
+	}
 	p, _ := tdsLogin("temporary", "secret", "lab")
 	if u, s, e := tdsParseLogin(p, "lab"); e != nil || u != "temporary" || s != "secret" {
 		t.Fatal("LOGIN7 mismatch")

@@ -137,6 +137,11 @@ func tdsVaultScenario(t *testing.T, engine, target, scenario string) {
 	query(admin, "CREATE TABLE guard_probe(value INTEGER)")
 	defer query(admin, "DROP TABLE guard_probe")
 	query(admin, "GRANT SELECT,INSERT ON guard_probe TO sag_e2e_backend")
+	backendProbe, err := tdsBackendConnect(context.Background(), target, backendTLS, "sag_e2e_backend", password, "sag_mssql_e2e")
+	if err != nil {
+		t.Fatalf("native backend authentication failed: %v", err)
+	}
+	backendProbe.Close()
 	if conn, e := tdsBackendConnect(context.Background(), target, backendTLS, "sag_e2e_backend", "wrong-password", "sag_mssql_e2e"); e == nil {
 		conn.Close()
 		t.Fatal("wrong backend password accepted")

@@ -151,11 +151,11 @@ func tdsBackendConnect(ctx context.Context, address string, config *tls.Config, 
 	}
 	p, e := tdsRead(raw, 4, 4096)
 	if e != nil {
-		return nil, e
+		return nil, fmt.Errorf("backend prelogin frame: %w", errTDSProtocol)
 	}
 	encryption, e := tdsPreloginEncryption(p)
 	if e != nil || (encryption != 1 && encryption != 3) {
-		return nil, errTDSProtocol
+		return nil, fmt.Errorf("backend prelogin encryption: %w", errTDSProtocol)
 	}
 	cfg := config.Clone()
 	cfg.MinVersion = tls.VersionTLS12
@@ -171,15 +171,18 @@ func tdsBackendConnect(ctx context.Context, address string, config *tls.Config, 
 	transport := &tdsHandshakeConn{Conn: raw, wrapped: true, readKind: 0}
 	secure := tls.Client(transport, cfg)
 	if secure.HandshakeContext(ctx) != nil || len(transport.pending) != 0 {
-		return nil, errTDSProtocol
+		return nil, fmt.Errorf("backend TLS handshake: %w", errTDSProtocol)
 	}
 	transport.wrapped = false
 	if tdsWrite(secure, 16, login) != nil {
 		return nil, errTDSProtocol
 	}
 	p, e = tdsRead(secure, 4, 65536)
-	if e != nil || !tdsAcceptLogin(p) {
-		return nil, errTDSProtocol
+	if e != nil {
+		return nil, fmt.Errorf("backend LOGIN7 frame: %w", errTDSProtocol)
+	}
+	if !tdsAcceptLogin(p) {
+		return nil, fmt.Errorf("backend LOGIN7 response: %w", errTDSProtocol)
 	}
 	secure.SetDeadline(time.Time{})
 	success = true

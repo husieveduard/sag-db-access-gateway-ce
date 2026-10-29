@@ -159,6 +159,12 @@ func tdsPreloginEncryption(p []byte) (byte, error) {
 	}
 	encryption := byte(255)
 	for i, f := range fields {
+		if f.n == 0 {
+			if f.token == 1 || f.token == 4 {
+				return 0, errTDSProtocol
+			}
+			continue
+		}
 		for _, prev := range fields[:i] {
 			if f.start < prev.start+prev.n && f.start+f.n > prev.start {
 				return 0, errTDSProtocol
@@ -177,7 +183,11 @@ func tdsPreloginEncryption(p []byte) (byte, error) {
 			if f.n != 1 || p[f.start] != 0 {
 				return 0, errTDSProtocol
 			}
-		case 6, 7:
+		case 6:
+			if f.n != 1 || p[f.start] != 0 {
+				return 0, errTDSProtocol
+			}
+		case 7:
 			return 0, errTDSProtocol
 		}
 	}
