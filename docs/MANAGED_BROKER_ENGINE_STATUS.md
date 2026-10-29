@@ -8,7 +8,7 @@ launch lifecycle, TLS policy, SQL behavior and regression tests are ready.
 | --- | --- | --- | --- | --- |
 | PostgreSQL | Implemented and SQL-tested | Simple query and bounded Sync-delimited extended protocol; real pgx SQL E2E | Implemented behind explicit local/testing opt-in | Disabled |
 | MySQL / MariaDB | Implemented with the shared process-bound worker | Verified TLS, native auth, COM_QUERY and bounded native prepared/binary results; real SELECT 1 | Same explicit local/testing launcher | Disabled |
-| MSSQL / SQL Server | Shared process-bound worker | Native TDS 7.4, verified TLS, SQL authentication and SQLBatch; real SELECT 1 and lifecycle E2E passed | Same explicit local/testing launcher | Disabled |
+| MSSQL / SQL Server | Shared process-bound worker | Native TDS 7.4, verified TLS, SQL authentication, SQLBatch and bounded `sp_executesql` RPC; real SELECT 1 and lifecycle E2E | Same explicit local/testing launcher | Disabled |
 
 The shared parts are encrypted resource credentials, session-scoped temporary
 logins, the authenticated Unix worker, PID/start-tick binding, one-time bootstrap,
@@ -19,7 +19,9 @@ MySQL/MariaDB now use their own native adapter and isolated MySQL 8.4/MariaDB
 11.4 SQL tests; see [MySQL/MariaDB lab details](MYSQL_MARIADB_VAULT_SQL_E2E.md).
 MSSQL now has a separate native TDS laboratory adapter and isolated SQL Server
 2022 CI suite; see [MSSQL lab details](MSSQL_VAULT_SQL_E2E.md). Its limited protocol
-surface does not enable Integrated Authentication, RPC or production managed mode.
+surface does not enable Integrated Authentication or production managed mode.
+An explicit Windows backend selection is stored and shown but remains blocked
+until its Kerberos implementation and AD E2E verification are complete.
 
 ## PostgreSQL automatic laboratory launch
 

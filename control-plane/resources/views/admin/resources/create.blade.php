@@ -109,6 +109,8 @@
             @enderror
         </div>
 
+        @include('admin.resources.partials.backend-auth')
+
         <div class="full">
             <label for="target_database">
                 {{ __('resources.create_page.database') }}

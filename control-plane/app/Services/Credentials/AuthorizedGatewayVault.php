@@ -26,7 +26,8 @@ final class AuthorizedGatewayVault
             && $session->status === 'started'
             && $session->expires_at !== null
             && $session->expires_at->isFuture()
-            && $session->resource?->is_active === true;
+            && $session->resource?->is_active === true
+            && $session->resource->usesPasswordBackendAuthentication();
     }
 
     /** Live non-secret gate, still bound to the originally bootstrapped process. */
@@ -43,6 +44,7 @@ final class AuthorizedGatewayVault
             && $session->mode === 'temporary' && $session->status === 'started'
             && $session->expires_at !== null && $session->expires_at->isFuture()
             && $session->resource?->is_active === true
+            && $session->resource->usesPasswordBackendAuthentication()
             && data_get($session->metadata, 'db.bootstrap_consumed_at') !== null
             && (int) data_get($session->metadata, 'db.gateway_pid', 0) === $peerPid
             && is_string($ticks = data_get($session->metadata, 'db.gateway_proc_start_ticks'))
@@ -74,7 +76,8 @@ final class AuthorizedGatewayVault
         if ($session === null || $session->mode !== 'temporary'
             || $session->status !== 'starting'
             || $session->expires_at === null || ! $session->expires_at->isFuture()
-            || $session->resource?->is_active !== true) {
+            || $session->resource?->is_active !== true
+            || ! $session->resource->usesPasswordBackendAuthentication()) {
             return false;
         }
 
@@ -186,7 +189,8 @@ final class AuthorizedGatewayVault
             || $session->status !== 'started'
             || $session->expires_at === null
             || $session->expires_at->isPast()
-            || ! $session->resource?->is_active) {
+            || ! $session->resource?->is_active
+            || ! $session->resource->usesPasswordBackendAuthentication()) {
             throw new DomainException('Gateway session is not authorized.');
         }
 
@@ -218,7 +222,8 @@ final class AuthorizedGatewayVault
             || $session->status !== 'started'
             || $session->expires_at === null
             || $session->expires_at->isPast()
-            || !$session->resource?->is_active) {
+            || !$session->resource?->is_active
+            || ! $session->resource->usesPasswordBackendAuthentication()) {
             throw new DomainException('Gateway session is not authorized.');
         }
 

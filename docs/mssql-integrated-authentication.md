@@ -1,6 +1,9 @@
 # MSSQL Windows Integrated Authentication — design contract
 
-Status: **design only**, not an implemented authentication path.
+Status: **explicit resource selection is implemented; Kerberos authentication
+is not**. Selecting `mssql_kerberos_service` blocks SQL password retrieval and
+broker launch. An isolated AD/Kerberos SQL Server acceptance test is required
+before this mode can be used.
 
 ## User-facing connection contract
 

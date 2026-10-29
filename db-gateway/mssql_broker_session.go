@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"crypto/tls"
 	"encoding/binary"
@@ -9,11 +10,12 @@ import (
 	"time"
 )
 
-// Only a non-MARS SQLBatch with the standard zero transaction descriptor.
-// RPC, attention, bulk and transaction switching are
-// rejected rather than forwarded through an opaque passthrough channel.
+// Only the standard non-MARS zero transaction descriptor is accepted.
+func tdsValidateHeaders(p []byte) bool {
+	return len(p) >= 22 && binary.LittleEndian.Uint32(p) == 22 && binary.LittleEndian.Uint32(p[4:]) == 18 && binary.LittleEndian.Uint16(p[8:]) == 2 && binary.LittleEndian.Uint64(p[10:]) == 0 && binary.LittleEndian.Uint32(p[18:]) == 1
+}
 func tdsValidateBatch(p []byte) bool {
-	if len(p) < 24 || binary.LittleEndian.Uint32(p) != 22 || binary.LittleEndian.Uint32(p[4:]) != 18 || binary.LittleEndian.Uint16(p[8:]) != 2 || binary.LittleEndian.Uint64(p[10:]) != 0 || binary.LittleEndian.Uint32(p[18:]) != 1 {
+	if len(p) < 24 || !tdsValidateHeaders(p) {
 		return false
 	}
 	_, e := tdsString(p[22:])
@@ -52,10 +54,16 @@ func tdsServeSession(ctx context.Context, raw net.Conn, frontendTLS, backendTLS 
 	if tdsWrite(front, 4, tdsLoginAck()) != nil {
 		return errTDSProtocol
 	}
+	reader := bufio.NewReader(front)
 	for {
 		front.SetReadDeadline(time.Now().Add(30 * time.Second))
-		p, reset, e := tdsReadMessage(front, 1, tdsMessageLimit, true)
-		if e != nil || !tdsValidateBatch(p) {
+		header, e := reader.Peek(1)
+		if e != nil || (header[0] != 1 && header[0] != 3) {
+			return errTDSProtocol
+		}
+		kind := header[0]
+		p, reset, e := tdsReadMessage(reader, kind, tdsMessageLimit, true)
+		if e != nil || (kind == 1 && !tdsValidateBatch(p)) || (kind == 3 && !tdsValidateRPC(p)) {
 			return errTDSProtocol
 		}
 		if !checkBrokerEngineSessionActive(ctx, client, control, token, session, engine, local) {
@@ -63,13 +71,13 @@ func tdsServeSession(ctx context.Context, raw net.Conn, frontendTLS, backendTLS 
 		}
 		backend.SetDeadline(time.Now().Add(30 * time.Second))
 		front.SetWriteDeadline(time.Now().Add(30 * time.Second))
-		if tdsWriteMessage(backend, 1, p, reset) != nil {
+		if tdsWriteMessage(backend, kind, p, reset) != nil {
 			return errTDSProtocol
 		}
 		result, e := tdsRead(backend, 4, 64<<20)
-		// A complete SQL response must end in the 7.4 DONE token, never an auth
+		// A complete SQL response must end in the 7.4 DONE/DONEPROC token, never an auth
 		// exchange or incomplete result. Tokens/typed rows are preserved for clients.
-		if e != nil || len(result) < 13 || result[len(result)-13] != 0xfd || binary.LittleEndian.Uint16(result[len(result)-12:])&1 != 0 {
+		if e != nil || len(result) < 13 || (result[len(result)-13] != 0xfd && !(kind == 3 && result[len(result)-13] == 0xfe)) || binary.LittleEndian.Uint16(result[len(result)-12:])&1 != 0 {
 			return errTDSProtocol
 		}
 		if tdsWrite(front, 4, result) != nil {

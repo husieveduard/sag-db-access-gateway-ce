@@ -11,6 +11,22 @@ class DatabaseResource extends Model
 {
     use HasFactory;
 
+    public function backendAuthMode(): string
+    {
+        $options = is_array($this->target_options) ? $this->target_options : [];
+        if (array_key_exists('backend_auth_mode', $options)) {
+            return is_string($options['backend_auth_mode']) ? $options['backend_auth_mode'] : 'invalid';
+        }
+
+        return in_array($this->engine, ['mssql', 'sqlserver'], true) ? 'mssql_sql_auth' : 'stored_password';
+    }
+
+    public function usesPasswordBackendAuthentication(): bool
+    {
+        return $this->backendAuthMode() === (in_array($this->engine, ['mssql', 'sqlserver'], true)
+            ? 'mssql_sql_auth' : 'stored_password');
+    }
+
     protected $table = 'database_resources';
 
     protected $fillable = [

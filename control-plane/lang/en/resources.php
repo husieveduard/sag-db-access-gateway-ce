@@ -1,6 +1,12 @@
 <?php
 
 return [
+    'backend_auth' => [
+        'label' => 'MSSQL server authentication',
+        'sql' => 'SQL Server Authentication',
+        'windows' => 'Windows Integrated Authentication (AD service account; not available yet)',
+        'notice' => 'Applies to MSSQL gateway-to-server connections. Other engines use password authentication. Windows mode can be saved, but connections remain blocked until the Kerberos adapter is implemented and verified. SAG temporary credentials are separate.',
+    ],
     'title' => 'Database resources',
     'heading' => 'Database Resources',
     'subtitle' => 'Target databases available for creating gateway sessions.',

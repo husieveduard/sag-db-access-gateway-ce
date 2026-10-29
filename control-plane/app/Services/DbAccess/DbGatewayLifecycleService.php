@@ -18,6 +18,9 @@ class DbGatewayLifecycleService
         $this->assertStartable($session);
 
         $resource = $session->resource;
+        if (! $resource->usesPasswordBackendAuthentication()) {
+            throw new RuntimeException('Selected backend authentication adapter is not implemented; refusing SQL authentication fallback.');
+        }
         // Managed authentication must never downgrade to client passthrough.
         // Enable it only after the native temporary-credential broker is
         // integrated for this engine and has passed end-to-end tests.

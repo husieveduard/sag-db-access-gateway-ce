@@ -13,7 +13,8 @@ var errTDSProtocol = errors.New("MSSQL laboratory protocol denied")
 const tdsMessageLimit = 4 << 20
 
 // Reassemble and bound messages before authorization. RESETCONNECTION is
-// accepted only on the first SQLBatch packet and is preserved for the backend.
+// established by the first SQLBatch/RPC packet and preserved for the backend.
+// Some drivers repeat the same RESET bit on continuation packets.
 func tdsRead(r io.Reader, expected byte, limit int) ([]byte, error) {
 	p, _, e := tdsReadMessage(r, expected, limit, false)
 	return p, e
@@ -28,9 +29,11 @@ func tdsReadMessage(r io.Reader, expected byte, limit int, allowReset bool) ([]b
 			return nil, false, errTDSProtocol
 		}
 		allowed := byte(1)
-		if allowReset && expected == 1 && len(result) == 0 {
+		if allowReset && (expected == 1 || expected == 3) && (len(result) == 0 || reset) {
 			allowed |= 8
-			reset = h[1]&8 != 0
+			if len(result) == 0 {
+				reset = h[1]&8 != 0
+			}
 		}
 		// SQL Server uses packet id zero for server replies and TLS envelopes.
 		if (expected == 0 || expected == 4) && len(result) == 0 && h[6] == 0 {
@@ -53,7 +56,7 @@ func tdsReadMessage(r io.Reader, expected byte, limit int, allowReset bool) ([]b
 }
 func tdsWrite(w io.Writer, kind byte, p []byte) error { return tdsWriteMessage(w, kind, p, false) }
 func tdsWriteMessage(w io.Writer, kind byte, p []byte, reset bool) error {
-	if len(p) == 0 || reset && kind != 1 {
+	if len(p) == 0 || reset && kind != 1 && kind != 3 {
 		return errTDSProtocol
 	}
 	seq := byte(1)

@@ -17,6 +17,9 @@ final class LabManagedBrokerLifecycleService extends DbGatewayLifecycleService
             throw new RuntimeException('Managed laboratory broker is disabled in this environment.');
         }
         $session->loadMissing('resource');
+        if ($session->resource && ! $session->resource->usesPasswordBackendAuthentication()) {
+            throw new RuntimeException('Selected backend authentication adapter is not implemented; refusing SQL authentication fallback.');
+        }
         $engine = $session->resource?->engine === 'postgres' ? 'postgresql' : $session->resource?->engine;
         $adapter = match ($engine) {
             'postgresql' => 'postgresql',
@@ -47,6 +50,7 @@ final class LabManagedBrokerLifecycleService extends DbGatewayLifecycleService
             $locked = DbAccessSession::query()->with('resource')->whereKey($session->id)->lockForUpdate()->firstOrFail();
             $this->assertStartable($locked);
             if ($locked->mode !== 'temporary' || $locked->resource->auth_mode !== 'managed'
+                || ! $locked->resource->usesPasswordBackendAuthentication()
                 || $locked->resource->target_tls_mode !== ($adapter !== 'postgresql' ? 'verify-full' : 'disable') || empty($locked->resource->target_database)
                 || ($locked->resource->engine === 'postgres' ? 'postgresql' : $locked->resource->engine) !== $engine
                 || ! GatewayTemporaryCredential::query()->where('session_id', $locked->id)->exists()
@@ -142,6 +146,7 @@ final class LabManagedBrokerLifecycleService extends DbGatewayLifecycleService
                 $locked = DbAccessSession::query()->with('resource')->whereKey($session->id)->lockForUpdate()->firstOrFail();
                 if ($locked->status !== 'starting' || $locked->expires_at?->isFuture() !== true
                     || ! $locked->resource?->is_active || data_get($locked->metadata, 'db.bootstrap_consumed_at') === null
+                    || ! $locked->resource->usesPasswordBackendAuthentication()
                     || ! $this->isExpectedGatewayProcess($pid, $locked)) {
                     throw new RuntimeException('activation denied');
                 }

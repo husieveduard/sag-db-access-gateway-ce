@@ -12,15 +12,21 @@ LOGIN7 contains the session's temporary login. Backend LOGIN7 is constructed
 independently from Vault credentials. Backend login replies are consumed locally;
 the frontend receives a synthetic acknowledgment with no backend identity data.
 
-Supported: SQL authentication, bounded SQLBatch messages, typed SQL results and
-RESETCONNECTION on the first packet of a batch. Reset is preserved at the real
+Supported: SQL authentication, bounded SQLBatch and `sp_executesql` RPC,
+typed SQL results, input parameters and RESETCONNECTION. Reset is preserved at the real
 backend after authorization; it never substitutes a different login or database.
 The adapter limits client messages to 4 MiB, complete responses to 64 MiB and
-query I/O to 30 seconds. Every batch requires both process-bound local IPC and
+query I/O to 30 seconds. Every batch or RPC requires both process-bound local IPC and
 HTTP session authorization; a periodic guard closes both ends on invalidation.
 
+The MSSQL resource form stores an explicit SQL Server or Windows Integrated
+backend authentication mode. Windows mode blocks SQL password retrieval and
+broker launch until a Kerberos adapter and isolated AD tests pass. Existing
+resources without a selection retain SQL authentication.
+
 Not supported: Windows Integrated Authentication/SSPI, federated authentication,
-MARS, RPC/prepared statements, bulk loading, attention/cancellation, TDS 8.0,
+MARS, RPC procedures other than `sp_executesql` (including server handles and
+cursors), bulk loading, attention/cancellation, TDS 8.0,
 nonzero transaction descriptors and change-password/attach-database login modes.
 Unsupported requests close the connection. Batch SQL permissions follow the
 backend role: this adapter is not a SQL firewall or a parser that restricts SQL
@@ -51,7 +57,8 @@ go test -v -run '^TestMSSQLVaultSQL$' -count=1 -timeout=6m ./...
 
 The real-server suite creates a random backend SQL login, grants only SELECT and
 INSERT on a disposable table, and provisions the Vault via stdin. Microsoft's
-independent go-mssqldb test client checks SELECT 1, NULL/Unicode/integer results,
+independent go-mssqldb test client checks SELECT 1, parameterized SQL with
+NULL/Unicode/integer/decimal/date/binary values, error recovery,
 affected rows and actual writes. Nine lifecycle scenarios cover revoke, expiry,
 resource deactivation, PID/start-tick replacement, worker loss while HTTP allows,
 unsupported RPC, incorrect Vault password and startup revocation. Tests also

@@ -68,6 +68,7 @@ class ResourceController extends Controller
                 'target_options' => [
                     'created_via' => 'web_console',
                     'credential_storage' => 'none',
+                    'backend_auth_mode' => $this->backendAuthMode($data),
                 ],
                 'created_by_user_id' => $request->user()->id,
             ]);
@@ -178,10 +179,12 @@ class ResourceController extends Controller
                         (string) ($before[$field] ?? '')
                         !== (string) ($attributes[$field] ?? '')
                 );
+                $backendAuthMode = $this->backendAuthMode($data, $locked);
+                $targetChanged = $targetChanged || $backendAuthMode !== $locked->backendAuthMode();
 
                 $activeGatewaySessions = DbAccessSession::query()
                     ->where('resource_id', $locked->id)
-                    ->whereIn('status', self::ACTIVE_GATEWAY_STATUSES)
+                    ->whereIn('status', [...self::ACTIVE_GATEWAY_STATUSES, 'stopping'])
                     ->count();
 
                 if ($targetChanged && $activeGatewaySessions > 0) {
@@ -196,7 +199,7 @@ class ResourceController extends Controller
                         is_array($locked->target_options)
                             ? $locked->target_options
                             : [],
-                        ['updated_via' => 'web_console'],
+                        ['updated_via' => 'web_console', 'backend_auth_mode' => $backendAuthMode],
                     ),
                 ])->save();
 
@@ -370,6 +373,11 @@ class ResourceController extends Controller
             'name' => ['required', 'string', 'min:3', 'max:160', $nameRule],
             'description' => ['nullable', 'string', 'max:5000'],
             'engine' => ['required', Rule::in(array_keys(self::ENGINES))],
+            'backend_auth_mode' => ['sometimes', 'required', Rule::in(
+                $request->input('engine') === 'mssql'
+                    ? ['mssql_sql_auth', 'mssql_kerberos_service']
+                    : ['stored_password', 'mssql_sql_auth']
+            )],
             'target_host' => [
                 'required',
                 'string',
@@ -428,6 +436,16 @@ class ResourceController extends Controller
         ];
     }
 
+    private function backendAuthMode(array $data, ?DatabaseResource $resource = null): string
+    {
+        if ($data['engine'] !== 'mssql') {
+            return 'stored_password';
+        }
+
+        return $data['backend_auth_mode'] ?? ($resource?->engine === 'mssql'
+            ? $resource->backendAuthMode() : 'mssql_sql_auth');
+    }
+
     private function snapshot(DatabaseResource $resource): array
     {
         return [
@@ -439,6 +457,7 @@ class ResourceController extends Controller
             'target_database' => $resource->target_database,
             'target_tls_mode' => $resource->target_tls_mode,
             'auth_mode' => $resource->auth_mode,
+            'backend_auth_mode' => $resource->backendAuthMode(),
             'query_audit_enabled' => (bool) $resource->query_audit_enabled,
             'is_active' => (bool) $resource->is_active,
         ];

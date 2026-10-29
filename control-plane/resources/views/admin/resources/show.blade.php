@@ -91,6 +91,11 @@
 
         <div class="summary-value">
             {{ $authLabels[$resource->auth_mode] ?? $resource->auth_mode }}<br>
+            @if ($resource->engine === 'mssql')
+                <span class="muted">{{ __('resources.backend_auth.label') }}:
+                    {{ $resource->backendAuthMode() === 'mssql_sql_auth' ? __('resources.backend_auth.sql') : ($resource->backendAuthMode() === 'mssql_kerberos_service' ? __('resources.backend_auth.windows') : $resource->backendAuthMode()) }}
+                </span><br>
+            @endif
 
             <span class="muted">
                 {{ __('resources.show.summary.tls') }}:

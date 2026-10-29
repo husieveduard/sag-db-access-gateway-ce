@@ -389,6 +389,8 @@ func tdsVaultScenario(t *testing.T, engine, target, scenario string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	e = independent.QueryRowContext(ctx, "SELECT 1").Scan(&oneValue)
 	if e == nil {
+		tdsAssertRealRPC(t, ctx, independent)
+		query(admin, "DELETE FROM guard_probe")
 		var nullValue sql.NullString
 		var word string
 		var number int
@@ -442,7 +444,7 @@ func tdsVaultScenario(t *testing.T, engine, target, scenario string) {
 		fixture(map[string]any{"action": scenario})
 	}
 	if scenario == "expire" || scenario == "deactivate" || scenario == "replace_ticks" || scenario == "replace_pid" {
-		tdsWrite(front, 1, tdsTestBatch("INSERT INTO guard_probe VALUES (1)"))
+		tdsWrite(front, 3, tdsTestRPCQuery("INSERT INTO guard_probe VALUES (@p1)"))
 	}
 	front.SetReadDeadline(time.Now().Add(7 * time.Second))
 	if _, e = front.Read(one[:]); e == nil {
