@@ -14,7 +14,7 @@ import (
 // PgBrokerBackendCredential is only supplied by a trusted server-side vault
 // integration. Do not serialize it to the frontend or place it in logs.
 
-// pgBrokerServeAuthenticatedSession bridges PostgreSQL simple-query traffic
+// pgBrokerServeAuthenticatedSession bridges bounded PostgreSQL query traffic
 // after two INDEPENDENT authentications. It is a lab-only primitive and is
 // intentionally not wired into the existing production listener. The
 // credential callback must enforce session + resource authorization.
@@ -69,60 +69,43 @@ func pgBrokerServeAuthenticatedSession(
 	if err = pgBrokerSendFrontendReady(frontend); err != nil {
 		return err
 	}
-	// Restrict this initial lab broker to the PostgreSQL simple query protocol.
-	// Extended query, replication, COPY, cancel and notification forwarding
-	// require separate explicit implementations and must fail closed.
+	state := newPgExtendedState()
+	authorize := func(checkCtx context.Context) bool {
+		return checkBrokerSessionActive(checkCtx, controlClient, controlURL, internalToken, sessionUID, localChecks...)
+	}
 	for {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		_ = frontend.SetReadDeadline(time.Now().Add(30 * time.Second))
-		kind, payload, _, readErr := readPgMessage(frontend)
-		if readErr != nil {
-			return readErr
+		frontend.SetReadDeadline(time.Now().Add(30 * time.Second))
+		kind, payload, _, e := pgReadBrokerFrame(frontend)
+		if e != nil {
+			return e
 		}
 		if kind == 'X' {
+			if len(payload) != 0 {
+				return errPgExtended
+			}
 			return nil
 		}
-		if kind != 'Q' || len(payload) < 2 || payload[len(payload)-1] != 0 {
-			return errors.New("unsupported PostgreSQL frontend message")
+		if kind == 'Q' {
+			if !authorize(ctx) {
+				return errPgExtended
+			}
+			if e := pgRelaySimpleQuery(backend, frontend, payload, state); e != nil {
+				return e
+			}
+			continue
 		}
-		if !checkBrokerSessionActive(ctx, controlClient, controlURL, internalToken, sessionUID, localChecks...) {
-			return errors.New("session revoked or expired")
+		frames, e := pgReadExtendedCycle(frontend, kind, payload, state)
+		if e != nil {
+			return e
 		}
-		// Avoid silently sending protocol control messages from the frontend.
-		frame := make([]byte, 5+len(payload))
-		frame[0] = 'Q'
-		binary.BigEndian.PutUint32(frame[1:5], uint32(4+len(payload)))
-		copy(frame[5:], payload)
-		if err = backend.SetDeadline(time.Now().Add(30 * time.Second)); err != nil {
-			return err
-		}
-		if _, err = io.Copy(backend, bytesReader(frame)); err != nil {
-			return err
-		}
-		for n := 0; n < 100000; n++ {
-			backendKind, _, rawMessage, backendErr := readPgMessage(backend)
-			if backendErr != nil {
-				return backendErr
-			}
-			if backendKind == 'K' || backendKind == 'R' {
-				return errors.New("unexpected backend control message")
-			}
-			if err = frontend.SetWriteDeadline(time.Now().Add(30 * time.Second)); err != nil {
-				return err
-			}
-			if _, err = io.Copy(frontend, bytesReader(rawMessage)); err != nil {
-				return err
-			}
-			if backendKind == 'Z' {
-				break
-			}
-			if n == 99999 {
-				return errors.New("backend response message limit exceeded")
-			}
+		if e = pgRelayExtendedCycle(ctx, backend, frontend, frames, state, authorize); e != nil {
+			return e
 		}
 	}
+
 }
 
 func pgBrokerSendFrontendReady(conn net.Conn) error {

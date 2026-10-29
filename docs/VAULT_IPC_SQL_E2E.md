@@ -90,3 +90,8 @@ control-plane descriptors are removed by same-PID re-exec before bootstrap, so
 PHP command completion is independent of the long-lived child. Both broker and
 HTTP logs are checked for backend-secret disclosure. All nine scenarios run in
 the dedicated CI job; absent SAG_E2E_BROKER_BINARY skips the three launch cases.
+
+The same native broker now also supports bounded Sync-delimited PostgreSQL
+extended queries; see [extended protocol SQL E2E](POSTGRES_EXTENDED_SQL_E2E.md).
+The current SQL matrix has 17 scenarios; existing validation records below/above
+refer to their original commits. Production gates remain disabled.

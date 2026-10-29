@@ -6,7 +6,7 @@ launch lifecycle, TLS policy, SQL behavior and regression tests are ready.
 
 | Engine | Vault and process-bound IPC | Native managed SQL | Automatic lab lifecycle | Production managed mode |
 | --- | --- | --- | --- | --- |
-| PostgreSQL | Implemented and SQL-tested | Simple-query broker; real SELECT 1 | Implemented behind explicit local/testing opt-in | Disabled |
+| PostgreSQL | Implemented and SQL-tested | Simple query and bounded Sync-delimited extended protocol; real pgx SQL E2E | Implemented behind explicit local/testing opt-in | Disabled |
 | MySQL / MariaDB | Implemented with the shared process-bound worker | Verified TLS, native auth, COM_QUERY and bounded native prepared/binary results; real SELECT 1 | Same explicit local/testing launcher | Disabled |
 | MSSQL / SQL Server | Shared process-bound worker | Native TDS 7.4, verified TLS, SQL authentication and SQLBatch; real SELECT 1 and lifecycle E2E passed | Same explicit local/testing launcher | Disabled |
 
@@ -63,3 +63,6 @@ SAG_E2E_BROKER_BINARY to that executable to include the managed-launch cases.
 Shared idle process cleanup, concurrent IPC and PID namespace compatibility are
 covered in [IPC/lifetime hardening](IPC_LIFECYCLE_HARDENING.md). Production gates
 remain disabled.
+
+PostgreSQL prepared/parameterized wire support and its limits are described in
+[extended protocol SQL E2E](POSTGRES_EXTENDED_SQL_E2E.md).

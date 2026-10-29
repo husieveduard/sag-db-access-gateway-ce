@@ -29,7 +29,7 @@ func TestLaravelVaultIPCPostgresSQL(t *testing.T) {
 	if os.Getenv("SAG_E2E_REQUIRE_WORKER_PID1") == "1" && os.Getpid() != 1 {
 		t.Fatal("PID-namespace regression must run its real worker as PID 1")
 	}
-	for _, scenario := range []string{"revoke", "expire", "deactivate", "replace_pid", "replace_ticks", "worker_lost", "managed_start", "managed_idle_revoke", "managed_idle_worker_lost", "managed_pending_revoke", "managed_bad_secret", "managed_revoke_start"} {
+	for _, scenario := range []string{"revoke", "expire", "deactivate", "replace_pid", "replace_ticks", "worker_lost", "managed_start", "managed_extended", "managed_extended_revoke", "managed_extended_worker_lost", "managed_extended_closed", "managed_extended_copy", "managed_idle_revoke", "managed_idle_worker_lost", "managed_pending_revoke", "managed_bad_secret", "managed_revoke_start"} {
 		t.Run(scenario, func(t *testing.T) { postgresVaultSQLScenario(t, scenario) })
 	}
 }
@@ -357,6 +357,75 @@ func postgresVaultSQLScenario(t *testing.T, scenario string) {
 				t.Fatal("idle invalidation retained a backend connection")
 			}
 			return
+		}
+
+		if strings.HasPrefix(scenario, "managed_extended") {
+			independent := pgIndependentClient(t, brokerAddress, setup.Temporary.Username, setup.Temporary.Password, &tls.Config{RootCAs: pool, ServerName: "localhost", MinVersion: tls.VersionTLS12})
+			defer independent.Close(context.Background())
+			pgExerciseExtendedClient(t, independent)
+			rows := query(admin, "SELECT count(*)::text FROM ipc_guard_probe")
+			if len(rows) != 7 || rows[6] != '1' {
+				t.Fatal("extended write did not reach real PostgreSQL")
+			}
+			query(admin, "DELETE FROM ipc_guard_probe")
+			testCtx, stopTest := context.WithTimeout(context.Background(), 10*time.Second)
+			defer stopTest()
+			if _, e := independent.Prepare(testCtx, "guard_write", "INSERT INTO ipc_guard_probe VALUES ($1)"); e != nil {
+				t.Fatal("guard prepared statement failed")
+			}
+			if scenario == "managed_extended" {
+				independent.Close(testCtx)
+			} else {
+				switch scenario {
+				case "managed_extended_revoke":
+					fixture(map[string]any{"action": "revoke"})
+				case "managed_extended_worker_lost":
+					stopWorker()
+					if !checkBrokerSessionActive(ctx, client, "http://"+address, "e2e-internal-only", "SAG-IPC-E2E") {
+						t.Fatal("worker loss revoked HTTP gate")
+					}
+				case "managed_extended_closed":
+					if independent.Deallocate(testCtx, "guard_write") != nil {
+						t.Fatal("Close before reuse failed")
+					}
+				case "managed_extended_copy":
+				}
+				var executeErr error
+				if scenario == "managed_extended_copy" {
+					result := independent.PgConn().ExecParams(testCtx, "COPY (SELECT 1) TO STDOUT", nil, nil, nil, nil).Read()
+					executeErr = result.Err
+					if len(result.Rows) != 0 {
+						t.Fatal("COPY data reached frontend")
+					}
+				} else {
+					executeErr = independent.PgConn().ExecPrepared(testCtx, "guard_write", [][]byte{[]byte("99")}, []int16{0}, nil).Read().Err
+				}
+				if executeErr == nil {
+					t.Fatal("revoked/closed/COPY extended operation was accepted")
+				}
+				if scenario == "managed_extended_revoke" || scenario == "managed_extended_worker_lost" {
+					assertManagedBrokerExited(t, result.PID, brokerAddress)
+				}
+				rows := query(admin, "SELECT count(*)::text FROM ipc_guard_probe")
+				if len(rows) != 7 || rows[6] != '0' {
+					t.Fatal("denied extended write reached PostgreSQL")
+				}
+				stopped := false
+				for i := 0; i < 50; i++ {
+					rows = query(admin, "SELECT count(*)::text FROM pg_stat_activity WHERE usename='ipc_e2e_backend'")
+					if len(rows) == 7 && rows[6] == '0' {
+						stopped = true
+						break
+					}
+					time.Sleep(20 * time.Millisecond)
+				}
+				if !stopped {
+					t.Fatal("extended failure retained backend connection")
+				}
+				t.Log("extended invalidation/closed handle/COPY denied without backend session leak")
+
+				return
+			}
 		}
 
 	} else {
