@@ -170,8 +170,11 @@ func tdsBackendConnect(ctx context.Context, address string, config *tls.Config, 
 	}
 	transport := &tdsHandshakeConn{Conn: raw, wrapped: true, readKind: 0}
 	secure := tls.Client(transport, cfg)
-	if secure.HandshakeContext(ctx) != nil || len(transport.pending) != 0 {
-		return nil, fmt.Errorf("backend TLS handshake: %w", errTDSProtocol)
+	if e := secure.HandshakeContext(ctx); e != nil {
+		return nil, fmt.Errorf("backend TLS handshake: %w", e)
+	}
+	if len(transport.pending) != 0 {
+		return nil, fmt.Errorf("backend TLS trailing bytes: %w", errTDSProtocol)
 	}
 	transport.wrapped = false
 	if tdsWrite(secure, 16, login) != nil {

@@ -32,6 +32,10 @@ func tdsReadMessage(r io.Reader, expected byte, limit int, allowReset bool) ([]b
 			allowed |= 8
 			reset = h[1]&8 != 0
 		}
+		// SQL Server uses packet id zero for its TLS handshake envelope.
+		if expected == 0 && len(result) == 0 && h[6] == 0 {
+			seq = 0
+		}
 		n := int(binary.BigEndian.Uint16(h[2:4]))
 		if (h[0] != expected && !(expected == 0 && (h[0] == 4 || h[0] == 18))) || h[1]&^allowed != 0 || h[6] != seq || h[7] != 0 || n <= 8 || n > 32767 || len(result)+n-8 > limit {
 			return nil, false, errTDSProtocol

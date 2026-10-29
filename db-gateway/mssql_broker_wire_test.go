@@ -68,6 +68,9 @@ func TestTDSFramingAndLoginBoundaries(t *testing.T) {
 			t.Fatal("unsafe packet accepted")
 		}
 	}
+	if _, e := tdsRead(bytes.NewReader([]byte{18, 1, 0, 9, 0, 0, 0, 0, 1}), 0, 100); e != nil {
+		t.Fatal("SQL Server TLS envelope id zero denied")
+	}
 	if !tdsAcceptLogin(tdsLoginAck()) || tdsAcceptLogin(append([]byte{0xaa}, tdsLoginAck()...)) {
 		t.Fatal("authentication response accepted incorrectly")
 	}
