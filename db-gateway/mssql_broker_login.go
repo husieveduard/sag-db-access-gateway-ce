@@ -135,6 +135,37 @@ func tdsBackendConnect(ctx context.Context, address string, config *tls.Config, 
 	if e != nil {
 		return nil, e
 	}
+	secure, e := tdsBackendTLS(ctx, address, config)
+	if e != nil {
+		return nil, e
+	}
+	success := false
+	defer func() {
+		if !success {
+			secure.Close()
+		}
+	}()
+	if tdsWrite(secure, 16, login) != nil {
+		return nil, errTDSProtocol
+	}
+	p, e := tdsRead(secure, 4, 65536)
+	if e != nil {
+		return nil, fmt.Errorf("backend LOGIN7 frame: %w", e)
+	}
+	if !tdsAcceptLogin(p) {
+		return nil, fmt.Errorf("backend LOGIN7 response: %w", errTDSProtocol)
+	}
+	secure.SetDeadline(time.Time{})
+	success = true
+	return secure, nil
+}
+
+// Shared verified transport for SQL-password and Kerberos backend LOGIN7.
+// Frontend authentication and post-login SQL authorization remain independent.
+func tdsBackendTLS(ctx context.Context, address string, config *tls.Config) (net.Conn, error) {
+	if ctx == nil || ctx.Err() != nil || config == nil || config.InsecureSkipVerify {
+		return nil, errTDSProtocol
+	}
 	raw, e := (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, "tcp", address)
 	if e != nil {
 		return nil, errTDSProtocol
@@ -177,17 +208,6 @@ func tdsBackendConnect(ctx context.Context, address string, config *tls.Config, 
 		return nil, fmt.Errorf("backend TLS trailing bytes: %w", errTDSProtocol)
 	}
 	transport.wrapped = false
-	if tdsWrite(secure, 16, login) != nil {
-		return nil, errTDSProtocol
-	}
-	p, e = tdsRead(secure, 4, 65536)
-	if e != nil {
-		return nil, fmt.Errorf("backend LOGIN7 frame: %w", e)
-	}
-	if !tdsAcceptLogin(p) {
-		return nil, fmt.Errorf("backend LOGIN7 response: %w", errTDSProtocol)
-	}
-	secure.SetDeadline(time.Time{})
 	success = true
 	return secure, nil
 }

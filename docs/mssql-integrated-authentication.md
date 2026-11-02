@@ -1,9 +1,42 @@
 # MSSQL Windows Integrated Authentication — design contract
 
-Status: **explicit resource selection is implemented; Kerberos authentication
-is not**. Selecting `mssql_kerberos_service` blocks SQL password retrieval and
-broker launch. An isolated AD/Kerberos SQL Server acceptance test is required
-before this mode can be used.
+Status: **the native backend adapter and isolated AD test stand are available
+for laboratory acceptance; managed Windows sessions remain disabled**.
+Selecting `mssql_kerberos_service` still blocks SQL password retrieval and broker
+launch. The native adapter preserves the existing TDS transport and SQL relay;
+it adds a distinct SSPI/LOGIN7 backend handshake with no SQL authentication
+fallback. Gateway session integration and its release acceptance are still
+required before enabling this mode.
+
+## Isolated native acceptance
+
+`deploy/kerberos-lab/Dockerfile` builds a disposable Samba AD DC for the fixed
+`SAG.TEST` realm. Provisioning refuses an existing database and requires an
+explicit lab environment flag. AD passwords enter the provisioner through stdin,
+and only the two laboratory service accounts' keys are exported. The test
+publishes no host ports and contacts no existing AD domain. Its uniquely named
+containers, network and short-lived keys are removed in `finally`.
+
+```sh
+docker build -f deploy/kerberos-lab/Dockerfile -t sag-ad-acceptance .
+CGO_ENABLED=0 sh scripts/build-mssql-kerberos-probe.sh /tmp/sag-mssql-kerberos-probe
+python3 scripts/test-mssql-kerberos.py --ad-image sag-ad-acceptance --probe /tmp/sag-mssql-kerberos-probe
+```
+
+Use `--kdc-only` for real AD service-ticket checks without a SQL Server image.
+The full test creates a least-privilege `SAG\gateway` Windows login, verifies
+target TLS, and makes SQL Server assert `ORIGINAL_LOGIN()` and `SUSER_SNAME()`
+before `SELECT 1`. Missing keytabs, mismatched or unknown SPNs, unknown target CA,
+and KDC loss must fail closed. SQL Server uses its separate `sqlservice` keytab.
+The native client uses AES128/AES256, an explicit realm/KDC configuration and a
+target-bound MSSQL SPN. It does not discover credentials from the environment,
+rewrite SPNs through DNS CNAMEs, or negotiate NTLM. Keytabs must be regular,
+owner-only files owned by the broker UID; symlinks are refused. Neither tickets
+nor key material are returned by the probe.
+
+These checks authenticate only the Gateway-to-target adapter. They do not yet
+enable the Laravel managed Windows mode or validate its temporary-client
+bootstrap, authorization and revocation path.
 
 ## User-facing connection contract
 

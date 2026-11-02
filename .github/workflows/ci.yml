@@ -9,6 +9,24 @@ permissions:
   contents: read
 
 jobs:
+  mssql-kerberos-native:
+    name: MSSQL Kerberos native AD SQL E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.x'
+      - name: Build isolated Samba AD and native Kerberos probe
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          docker build -f deploy/kerberos-lab/Dockerfile -t sag-ad-acceptance .
+          sh scripts/build-mssql-kerberos-probe.sh /tmp/sag-mssql-kerberos-probe
+      - name: Verify native Kerberos SQL login against real AD and SQL Server
+        run: python3 scripts/test-mssql-kerberos.py --ad-image sag-ad-acceptance --probe /tmp/sag-mssql-kerberos-probe
+
   managed-compose:
     name: Managed Compose SQL acceptance (${{ matrix.engine }})
     runs-on: ubuntu-latest
