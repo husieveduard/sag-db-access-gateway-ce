@@ -6,12 +6,18 @@ WORKDIR /app
 
 COPY control-plane/composer.json control-plane/composer.lock ./
 
-RUN composer install \
+RUN --mount=type=secret,id=proxy_ca \
+    if [ -s /run/secrets/proxy_ca ]; then \
+        cat /etc/ssl/certs/ca-certificates.crt /run/secrets/proxy_ca > /tmp/sag-build-ca.pem; \
+        export COMPOSER_CAFILE=/tmp/sag-build-ca.pem; \
+    fi; \
+    composer install \
     --no-dev \
     --no-interaction \
     --prefer-dist \
     --optimize-autoloader \
-    --no-scripts
+    --no-scripts; \
+    status=$?; rm -f /tmp/sag-build-ca.pem; exit "$status"
 
 COPY control-plane/ ./
 
@@ -25,13 +31,19 @@ FROM node:22-alpine AS frontend
 
 WORKDIR /app
 
+ARG SAG_SKIP_REMOTE_FONTS=false
+
 COPY control-plane/package.json ./
 
-RUN npm install --ignore-scripts
+RUN --mount=type=secret,id=proxy_ca \
+    if [ -s /run/secrets/proxy_ca ]; then \
+        export NODE_EXTRA_CA_CERTS=/run/secrets/proxy_ca; \
+    fi; \
+    npm install --ignore-scripts
 
 COPY control-plane/ ./
 
-RUN npm run build
+RUN SAG_SKIP_REMOTE_FONTS="$SAG_SKIP_REMOTE_FONTS" npm run build
 
 
 FROM golang:1.22-bookworm AS gateway-builder
@@ -40,7 +52,13 @@ WORKDIR /src/db-gateway
 
 COPY db-gateway/go.mod ./
 
-RUN go mod download
+RUN --mount=type=secret,id=proxy_ca \
+    if [ -s /run/secrets/proxy_ca ]; then \
+        cat /etc/ssl/certs/ca-certificates.crt /run/secrets/proxy_ca > /tmp/sag-build-ca.pem; \
+        export SSL_CERT_FILE=/tmp/sag-build-ca.pem; \
+    fi; \
+    go mod download; \
+    status=$?; rm -f /tmp/sag-build-ca.pem; exit "$status"
 
 COPY db-gateway/ ./
 COPY scripts/build-postgres-lab-broker.sh scripts/build-mysql-lab-broker.sh scripts/build-mssql-lab-broker.sh /src/scripts/
@@ -89,7 +107,11 @@ RUN apt-get update \
 # Compile from the upstream phpredis 6.3.0 source at a verified commit.
 # PECL download endpoints may return 504, making otherwise healthy builds fail.
 # Keep this in a separate Docker layer so PHP core extensions remain cached.
-RUN set -eux; \
+RUN --mount=type=secret,id=proxy_ca set -eux; \
+    if [ -s /run/secrets/proxy_ca ]; then \
+        cat /etc/ssl/certs/ca-certificates.crt /run/secrets/proxy_ca > /tmp/sag-build-ca.pem; \
+        export GIT_SSL_CAINFO=/tmp/sag-build-ca.pem; \
+    fi; \
     for attempt in 1 2 3; do \
         rm -rf /tmp/phpredis; \
         if git clone --quiet --depth 1 --branch 6.3.0 \
@@ -107,7 +129,7 @@ RUN set -eux; \
     docker-php-ext-enable redis; \
     php --ri redis; \
     cd /; \
-    rm -rf /tmp/phpredis
+    rm -rf /tmp/phpredis /tmp/sag-build-ca.pem
 
 WORKDIR /var/www/html
 
