@@ -52,8 +52,8 @@ func main() {
 		for _, statement := range []string{"CREATE DATABASE sag_kerberos_e2e",
 			"CREATE LOGIN [SAG\\gateway] FROM WINDOWS",
 			"USE sag_kerberos_e2e; CREATE USER [SAG\\gateway] FOR LOGIN [SAG\\gateway]; ALTER ROLE db_datareader ADD MEMBER [SAG\\gateway]"} {
-			if kerberosProbeQuery(conn, statement, false) != nil {
-				kerberosProbeFail("AD principal provisioning failed")
+			if err := kerberosProbeQuery(conn, statement, false); err != nil {
+				kerberosProbeFail("AD principal provisioning failed: " + err.Error())
 			}
 		}
 		fmt.Println("isolated_windows_login_provisioned")
@@ -97,6 +97,17 @@ func kerberosProbeQuery(conn net.Conn, statement string, expectOne bool) error {
 		return errTDSProtocol
 	}
 	reply, err := tdsRead(conn, 4, 65536)
+	// Provisioning statements contain no passwords. Decode only the SQL ERROR
+	// text for diagnosis; never dump wire frames, SSPI tokens or key material.
+	if err == nil && len(reply) >= 11 && reply[0] == 0xaa {
+		n := int(binary.LittleEndian.Uint16(reply[9:])) * 2
+		if n > 0 && n <= 4096 && n <= len(reply)-11 {
+			message, decodeErr := tdsString(reply[11 : 11+n])
+			if decodeErr == nil {
+				return fmt.Errorf("SQL error %d: %s", binary.LittleEndian.Uint32(reply[3:]), message)
+			}
+		}
+	}
 	if err != nil || len(reply) < 13 || reply[len(reply)-13] != 0xfd || binary.LittleEndian.Uint16(reply[len(reply)-12:])&0x103 != 0 {
 		return errTDSProtocol
 	}

@@ -74,7 +74,7 @@ def main():
                  lambda result: result.returncode == 0 and b'dc.sag.test' in result.stdout)
         for name in ('gateway.keytab', 'sql.keytab'):
             run(['docker', 'cp', dc + ':/var/lib/samba/private/sag-keys/' + name, str(work / name)])
-        (work / 'krb5.conf').write_text('[libdefaults]\n default_realm = SAG.TEST\n dns_lookup_kdc = false\n dns_lookup_realm = false\n[realms]\n SAG.TEST = {\n  kdc = ' + dc_ip + '\n }\n[domain_realm]\n .sag.test = SAG.TEST\n sag.test = SAG.TEST\n')
+        (work / 'krb5.conf').write_text('[libdefaults]\n default_realm = SAG.TEST\n default_keytab_name = /var/opt/mssql/secrets/mssql.keytab\n default_ccache_name = ""\n dns_lookup_kdc = false\n dns_lookup_realm = false\n[realms]\n SAG.TEST = {\n  kdc = ' + dc_ip + '\n  admin_server = ' + dc_ip + '\n  default_domain = SAG.TEST\n }\n[domain_realm]\n .sag.test = SAG.TEST\n sag.test = SAG.TEST\n')
         (work / 'krb5.conf').chmod(0o644)
         for name, hostname in (('server', 'sql.sag.test'), ('wrong', 'untrusted.sag.test')):
             run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1',
@@ -97,7 +97,7 @@ def main():
             envfile.write_text('ACCEPT_EULA=Y\nMSSQL_PID=Developer\nMSSQL_MEMORY_LIMIT_MB=2048\nMSSQL_SA_PASSWORD=' + passwords['sa_password'] + '\n')
             envfile.chmod(0o600)
             run(['docker', 'run', '-d', '--name', sql, '--hostname', 'sql.sag.test', '--network', network,
-                 '--ip', sql_ip, '--network-alias', 'sql.sag.test', '--dns', dc_ip,
+                 '--ip', sql_ip, '--network-alias', 'sql.sag.test', '--dns', dc_ip, '--dns-search', 'sag.test',
                  '--env-file', str(envfile),
                  '-v', str(work / 'sql.keytab') + ':/var/opt/mssql/secrets/mssql.keytab:ro',
                  '-v', str(work / 'server.key') + ':/var/opt/mssql/server.key:ro',
