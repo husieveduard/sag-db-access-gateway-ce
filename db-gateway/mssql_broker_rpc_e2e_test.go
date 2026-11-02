@@ -10,7 +10,7 @@ import (
 
 // Uses the independent Microsoft client and a real SQL Server through the
 // Laravel-launched broker. This helper runs in every non-idle MSSQL SQL E2E.
-func tdsAssertRealRPC(t *testing.T, ctx context.Context, db *sql.DB) {
+func tdsAssertRealRPC(t *testing.T, ctx context.Context, db *sql.DB, largePayload bool) {
 	t.Helper()
 	stmt, err := db.PrepareContext(ctx, "SELECT @p1, @p2, @p3, @p4, @p5, CAST(@p6 AS decimal(10,2))")
 	if err != nil {
@@ -18,7 +18,11 @@ func tdsAssertRealRPC(t *testing.T, ctx context.Context, db *sql.DB) {
 	}
 	defer stmt.Close()
 	wantTime := time.Date(2026, 10, 29, 12, 34, 56, 0, time.UTC)
-	for _, size := range []int{4, 10000} {
+	sizes := []int{4}
+	if largePayload {
+		sizes = append(sizes, 10000)
+	}
+	for _, size := range sizes {
 		wantBlob := bytes.Repeat([]byte{0, 1, 42, 255}, size/4)
 		var number int64
 		var word, decimal string

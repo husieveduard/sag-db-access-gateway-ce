@@ -389,7 +389,10 @@ func tdsVaultScenario(t *testing.T, engine, target, scenario string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	e = independent.QueryRowContext(ctx, "SELECT 1").Scan(&oneValue)
 	if e == nil {
-		tdsAssertRealRPC(t, ctx, independent)
+		// The large PLP payload is real SQL coverage, not a lifecycle
+		// prerequisite. Run it once instead of stressing the same disposable
+		// SQL Server twelve times while it is still completing startup work.
+		tdsAssertRealRPC(t, ctx, independent, scenario == "revoke")
 		query(admin, "DELETE FROM guard_probe")
 		var nullValue sql.NullString
 		var word string
