@@ -7,6 +7,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* /etc/samba/smb.conf
 
 COPY deploy/kerberos-lab/provision.py /usr/local/bin/provision-ad.py
+COPY deploy/kerberos-lab/configure-dns.py /usr/local/bin/configure-dns.py
 COPY deploy/kerberos-lab/entrypoint.sh /usr/local/bin/sag-lab-ad
 RUN chmod 0755 /usr/local/bin/sag-lab-ad
 

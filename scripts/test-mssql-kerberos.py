@@ -72,17 +72,27 @@ def main():
             json.dumps({**passwords, 'dc_ip': dc_ip, 'sql_ip': sql_ip}).encode())
         wait_for(lambda: run(['docker', 'exec', dc, 'dig', '@127.0.0.1', '_kerberos._tcp.sag.test', 'SRV', '+short'], check=False),
                  lambda result: result.returncode == 0 and b'dc.sag.test' in result.stdout)
+        run(['docker', 'exec', '-i', dc, '/usr/bin/python3', '/usr/local/bin/configure-dns.py'],
+            json.dumps({**passwords, 'dc_ip': dc_ip, 'sql_ip': sql_ip}).encode())
+        for query, expected in ((['sag.sag.test', 'A'], dc_ip), (['-x', dc_ip], 'dc.sag.test')):
+            result = run(['docker', 'exec', dc, 'dig', '@127.0.0.1', '+short', *query])
+            if expected.encode() not in result.stdout:
+                raise RuntimeError('AD NetBIOS or reverse DNS failed')
         for name in ('gateway.keytab', 'sql.keytab'):
             run(['docker', 'cp', dc + ':/var/lib/samba/private/sag-keys/' + name, str(work / name)])
-        (work / 'krb5.conf').write_text('[libdefaults]\n default_realm = SAG.TEST\n default_keytab_name = /var/opt/mssql/secrets/mssql.keytab\n default_ccache_name = ""\n dns_lookup_kdc = false\n dns_lookup_realm = false\n[realms]\n SAG.TEST = {\n  kdc = ' + dc_ip + '\n  admin_server = ' + dc_ip + '\n  default_domain = SAG.TEST\n }\n[domain_realm]\n .sag.test = SAG.TEST\n sag.test = SAG.TEST\n')
+        (work / 'krb5.conf').write_text('[libdefaults]\n default_realm = SAG.TEST\n default_keytab_name = /var/opt/mssql/secrets/mssql.keytab\n default_ccache_name = ""\n dns_lookup_kdc = false\n dns_lookup_realm = false\n[realms]\n SAG.TEST = {\n  kdc = dc.sag.test\n  admin_server = dc.sag.test\n  default_domain = SAG.TEST\n }\n[domain_realm]\n .sag.test = SAG.TEST\n sag.test = SAG.TEST\n')
         (work / 'krb5.conf').chmod(0o644)
         for name, hostname in (('server', 'sql.sag.test'), ('wrong', 'untrusted.sag.test')):
             run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1',
                  '-subj', '/CN=' + hostname, '-addext', 'subjectAltName=DNS:' + hostname,
                  '-keyout', str(work / (name + '.key')), '-out', str(work / (name + '.crt'))])
             (work / (name + '.crt')).chmod(0o644)
-        (work / 'mssql.conf').write_text('[network]\nforceencryption = 1\ntlscert = /var/opt/mssql/server.crt\ntlskey = /var/opt/mssql/server.key\ntlsprotocols = 1.2\nkerberoskeytabfile = /var/opt/mssql/secrets/mssql.keytab\nprivilegedadaccount = sqlservice\n')
+        (work / 'mssql.conf').write_text('[network]\nforceencryption = 1\ntlscert = /var/opt/mssql/server.crt\ntlskey = /var/opt/mssql/server.key\ntlsprotocols = 1.2\nkerberoskeytabfile = /var/opt/mssql/secrets/mssql.keytab\nprivilegedadaccount = sqlservice\nenablekdcfromkrb5conf = true\n')
         (work / 'mssql.conf').chmod(0o644)
+        (work / 'resolv.conf').write_text('search sag.test\nnameserver ' + dc_ip + '\noptions timeout:1 attempts:2\n')
+        (work / 'resolv.conf').chmod(0o644)
+        (work / 'logger.ini').write_text('[Output:security]\nType = File\nFilename = /var/opt/mssql/log/security.log\n[Logger]\nLevel = Silent\n[Logger:security.kerberos]\nLevel = Error\nOutputs = security\n[Logger:security.ldap]\nLevel = Error\nOutputs = security\n')
+        (work / 'logger.ini').chmod(0o644)
         run(['docker', 'run', '--rm', '--user', 'root', '--entrypoint', '/bin/sh',
              '-v', str(work) + ':/fixture', args.ad_image, '-c',
              'chown 0:0 /fixture/krb5.conf; chown 33:33 /fixture/gateway.keytab; chmod 600 /fixture/gateway.keytab; chown 10001:0 /fixture/sql.keytab /fixture/server.key; chmod 600 /fixture/sql.keytab /fixture/server.key'])
@@ -104,6 +114,8 @@ def main():
                  '-v', str(work / 'server.crt') + ':/var/opt/mssql/server.crt:ro',
                  '-v', str(work / 'mssql.conf') + ':/var/opt/mssql/mssql.conf:ro',
                  '-v', str(work / 'krb5.conf') + ':/etc/krb5.conf:ro',
+                 '-v', str(work / 'resolv.conf') + ':/etc/resolv.conf:ro',
+                 '-v', str(work / 'logger.ini') + ':/var/opt/mssql/logger.ini:ro',
                  'mcr.microsoft.com/mssql/server:2022-latest'], timeout=480)
             wait_for(lambda: probe('sql-ready', payload=passwords['sa_password'].encode(), check=False),
                      lambda result: result.returncode == 0, timeout=180)
@@ -117,6 +129,11 @@ def main():
         denied('ticket', [])
         print('Missing keytab, wrong/unknown SPN and KDC loss fail closed; no SQL fallback', flush=True)
     except Exception:
+        diagnostic = run(['docker', 'exec', sql, 'sh', '-c', 'getent hosts SAG sag.test dc.sag.test; tail -40 /var/opt/mssql/log/security.log'], check=False)
+        message = (diagnostic.stdout + diagnostic.stderr).decode(errors='replace')
+        for secret in passwords.values():
+            message = message.replace(secret, '[redacted]')
+        print('SQL AD lookup diagnostics (Error level only): ' + message, flush=True)
         for container in (dc, sql):
             logs = run(['docker', 'logs', '--tail', '30', container], check=False)
             message = (logs.stdout + logs.stderr).decode(errors='replace')
