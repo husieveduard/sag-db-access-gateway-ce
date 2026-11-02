@@ -65,6 +65,12 @@ must validate each target's hostname. The overlay is a staging candidate,
 not the default installation path; production activation awaits full release
 acceptance including Windows Integrated Authentication.
 
+[Managed Compose acceptance](MANAGED_COMPOSE_ACCEPTANCE.md) exercises the
+packaged runtime and this overlay with MySQL, MariaDB and MSSQL in separate
+disposable deployments. It checks real SQL, process identity, foreign bootstrap
+denial, active queued revocation, backend connection cleanup and secret-free
+logs. CI runs the same acceptance for all three SQL authentication adapters.
+
 With the explicit runtime flag, the resource form can select managed
 authentication. The resource is stored with verified backend TLS and requires
 an encrypted SQL credential in the Vault before launch. The session form issues

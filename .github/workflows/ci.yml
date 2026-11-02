@@ -9,6 +9,29 @@ permissions:
   contents: read
 
 jobs:
+  managed-compose:
+    name: Managed Compose SQL acceptance (${{ matrix.engine }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [mysql, mariadb, mssql]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.x'
+      - name: Build runtime image and independent SQL probe
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          docker build --build-arg SAG_SKIP_REMOTE_FONTS=true --target runtime -t sag-ce-compose-acceptance -f deploy/Dockerfile .
+          cd db-gateway
+          go build -o /tmp/sag-managed-compose-probe managed_compose_probe_main.go
+      - name: Verify deployed Vault IPC, SQL and queued revocation
+        run: python3 scripts/test-managed-compose.py --engine '${{ matrix.engine }}' --image sag-ce-compose-acceptance --probe /tmp/sag-managed-compose-probe
+
   preflight:
     name: Public repository preflight
     runs-on: ubuntu-latest
