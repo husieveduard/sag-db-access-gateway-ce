@@ -136,6 +136,7 @@ func postgresVaultSQLScenario(t *testing.T, scenario string) {
 
 	env := append(os.Environ(), "APP_ENV=testing", "APP_DEBUG=false", "BCRYPT_ROUNDS=4", "APP_KEY=base64:"+base64.StdEncoding.EncodeToString(random),
 		"SAG_CE_CREDENTIAL_KEY=base64:"+base64.StdEncoding.EncodeToString(random), "DB_CONNECTION=sqlite", "DB_DATABASE="+filepath.Join(dir, "control.sqlite"),
+		"HTTP_PROXY=http://127.0.0.1:1", "HTTPS_PROXY=http://127.0.0.1:1",
 		"CACHE_STORE=array", "SESSION_DRIVER=array", "LOG_CHANNEL=stderr", "SAG_INTERNAL_TOKEN=e2e-internal-only")
 	if err = os.WriteFile(filepath.Join(dir, "control.sqlite"), nil, 0600); err != nil {
 		t.Fatal(err)
@@ -314,7 +315,9 @@ func postgresVaultSQLScenario(t *testing.T, scenario string) {
 		launcher = map[string]any{"binary": managedBinary, "socket": socket, "cert": certPath, "key": keyPath, "worker_uid": os.Getuid(), "log_dir": filepath.Join(dir, "logs"), "control": "http://" + address, "port": portNumber, "backend_ca": os.Getenv("SAG_E2E_POSTGRES_CA"), "runtime": os.Getenv("SAG_E2E_USE_RUNTIME") == "1"}
 		defer func() {
 			logScope := "managed-lab"
-			if os.Getenv("SAG_E2E_USE_RUNTIME") == "1" { logScope = "managed-runtime" }
+			if os.Getenv("SAG_E2E_USE_RUNTIME") == "1" {
+				logScope = "managed-runtime"
+			}
 			logs, _ := filepath.Glob(filepath.Join(dir, "logs", logScope, "*.log"))
 			for _, path := range logs {
 				body, _ := os.ReadFile(path)
@@ -367,7 +370,7 @@ func postgresVaultSQLScenario(t *testing.T, scenario string) {
 		if e != nil {
 			t.Fatal("broker environment unavailable")
 		}
-		for _, forbidden := range []string{"SAG_CE_CREDENTIAL_KEY=", "APP_KEY=", "DB_PASSWORD=", "SAG_INTERNAL_TOKEN="} {
+		for _, forbidden := range []string{"SAG_CE_CREDENTIAL_KEY=", "APP_KEY=", "DB_PASSWORD=", "SAG_INTERNAL_TOKEN=", "HTTP_PROXY=", "HTTPS_PROXY=", "http_proxy=", "https_proxy="} {
 			if bytes.Contains(processEnv, []byte(forbidden)) {
 				t.Fatal("broker inherited privileged control-plane environment")
 			}

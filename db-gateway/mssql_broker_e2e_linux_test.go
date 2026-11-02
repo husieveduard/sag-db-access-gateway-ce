@@ -164,7 +164,7 @@ func tdsVaultScenario(t *testing.T, engine, target, scenario string) {
 	if php == "" {
 		php = "php"
 	}
-	env := append(os.Environ(), "APP_ENV=testing", "APP_DEBUG=false", "BCRYPT_ROUNDS=4", "APP_KEY=base64:"+base64.StdEncoding.EncodeToString(secret), "SAG_CE_CREDENTIAL_KEY=base64:"+base64.StdEncoding.EncodeToString(secret), "DB_CONNECTION=sqlite", "DB_DATABASE="+dbPath, "CACHE_STORE=array", "SESSION_DRIVER=array", "LOG_CHANNEL=stderr", "SAG_INTERNAL_TOKEN=mssql-internal-only")
+	env := append(os.Environ(), "APP_ENV=testing", "APP_DEBUG=false", "BCRYPT_ROUNDS=4", "APP_KEY=base64:"+base64.StdEncoding.EncodeToString(secret), "SAG_CE_CREDENTIAL_KEY=base64:"+base64.StdEncoding.EncodeToString(secret), "DB_CONNECTION=sqlite", "DB_DATABASE="+dbPath, "CACHE_STORE=array", "SESSION_DRIVER=array", "LOG_CHANNEL=stderr", "SAG_INTERNAL_TOKEN=mssql-internal-only", "HTTP_PROXY=http://127.0.0.1:1", "HTTPS_PROXY=http://127.0.0.1:1")
 	fixture := func(input map[string]any) []byte {
 		t.Helper()
 		data, _ := json.Marshal(input)
@@ -334,7 +334,7 @@ func tdsVaultScenario(t *testing.T, engine, target, scenario string) {
 	if e != nil {
 		t.Fatal("child env unavailable")
 	}
-	for _, key := range []string{"DB_PASSWORD=", "APP_KEY=", "SAG_CE_CREDENTIAL_KEY=", "SAG_INTERNAL_TOKEN="} {
+	for _, key := range []string{"DB_PASSWORD=", "APP_KEY=", "SAG_CE_CREDENTIAL_KEY=", "SAG_INTERNAL_TOKEN=", "HTTP_PROXY=", "HTTPS_PROXY=", "http_proxy=", "https_proxy="} {
 		if bytes.Contains(processEnv, []byte(key)) {
 			t.Fatal("privileged environment inherited")
 		}

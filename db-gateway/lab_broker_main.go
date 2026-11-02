@@ -125,7 +125,15 @@ func main() {
 	}
 	local := pgIPCBoundSessionCheck(*socket, *session, *resource, uint32(*workerUID))
 	lifetime, stopLifetime := brokerWatchManagedListener(context.Background(), listener, func(ctx context.Context) bool {
-		return checkBrokerEngineSessionActive(ctx, &http.Client{Timeout: 3 * time.Second}, *control, token, *session, "postgresql", local)
+		if !local(ctx) {
+			fmt.Fprintln(os.Stderr, "MANAGED_LIFETIME_IPC_DENIED")
+			return false
+		}
+		if !checkBrokerEngineSessionActive(ctx, &http.Client{Timeout: 3 * time.Second}, *control, token, *session, "postgresql") {
+			fmt.Fprintln(os.Stderr, "MANAGED_LIFETIME_HTTP_DENIED")
+			return false
+		}
+		return true
 	})
 	defer stopLifetime()
 	fmt.Printf("LAB_BROKER_LISTEN=%s\n", listener.Addr())

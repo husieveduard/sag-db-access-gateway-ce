@@ -45,6 +45,9 @@ PIDs match the process identity recorded by Laravel. The worker's trusted UID
 must match `SAG_MANAGED_WORKER_UID` or the launcher UID. Keep the socket in a
 private owner-only directory. The worker needs Laravel's Vault key; the broker
 receives neither that key nor the backend password in its environment or args.
+The launcher also removes HTTP proxy variables from the broker environment so
+the internal session-status token is sent directly to the configured control
+host and can never be routed through an external proxy.
 Current Production Compose does not start this worker or set the runtime flag.
 The isolated PostgreSQL TLS E2E exercises the runtime launcher, credential
 bootstrap, SQL and revocation with loopback listener in APP_ENV=testing.

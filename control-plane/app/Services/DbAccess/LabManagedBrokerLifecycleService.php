@@ -102,7 +102,12 @@ class LabManagedBrokerLifecycleService extends DbGatewayLifecycleService
             // Inherit only transport/locale variables. The broker must not get
             // Laravel DB passwords, Vault encryption keys or the internal token.
             $env = ['SAG_DB_SESSION_UID' => $session->public_id];
-            foreach (['PATH', 'LANG', 'TZ', 'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'SSL_CERT_FILE', 'SSL_CERT_DIR'] as $name) {
+            // Brokers connect only to the selected database and the internal
+            // control-plane host. Never inherit HTTP proxy settings: Go would
+            // otherwise send the internal status request and its bearer token
+            // to an external proxy when the Compose service name is absent
+            // from NO_PROXY.
+            foreach (['PATH', 'LANG', 'TZ', 'SSL_CERT_FILE', 'SSL_CERT_DIR'] as $name) {
                 if (($value = getenv($name)) !== false) {
                     $env[$name] = $value;
                 }
