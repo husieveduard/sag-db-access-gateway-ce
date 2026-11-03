@@ -21,6 +21,7 @@ func main() {
 	listen := flag.String("listen", "127.0.0.1:11433", "loopback listener")
 	target := flag.String("target", "", "backend address")
 	database := flag.String("database", "", "bound database")
+	backendAuth := flag.String("backend-auth", "mssql_sql_auth", "explicit backend authentication strategy")
 	mode := flag.String("backend-tls", "verify-full", "verified backend TLS only")
 	ca := flag.String("backend-ca", "", "trusted backend CA bundle")
 	certPath := flag.String("cert", "", "frontend certificate")
@@ -31,7 +32,7 @@ func main() {
 	resource := flag.Int64("resource", 0, "bound resource")
 	control := flag.String("control", "", "control plane")
 	flag.Parse()
-	if !*supervised || (*engine != "mssql" && *engine != "sqlserver") || *mode != "verify-full" || *target == "" || *resource <= 0 || *session == "" || *socket == "" || *control == "" || *workerUID > uint(^uint32(0)) {
+	if !*supervised || (*engine != "mssql" && *engine != "sqlserver") || (*backendAuth != "mssql_sql_auth" && *backendAuth != "mssql_kerberos_service") || *mode != "verify-full" || *target == "" || *resource <= 0 || *session == "" || *socket == "" || *control == "" || *workerUID > uint(^uint32(0)) {
 		tdsFatal()
 	}
 	if !*clean {
@@ -54,13 +55,13 @@ func main() {
 		tdsFatal()
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
-	credentials, e := pgIPCTakeCredentials(ctx, *socket, *session, *resource, uint32(*workerUID))
+	connect, e := tdsBootstrapBackend(ctx, *socket, *session, *resource, uint32(*workerUID), *backendAuth, *target, *database, backendTLS)
 	cancel()
 	if e != nil {
 		tdsFatal()
 	}
 	probeCtx, stopProbe := context.WithTimeout(context.Background(), 15*time.Second)
-	probe, e := tdsBackendConnect(probeCtx, *target, backendTLS, credentials.Username, credentials.Password, *database)
+	probe, e := connect(probeCtx)
 	stopProbe()
 	if e != nil {
 		tdsFatal()
@@ -89,12 +90,7 @@ func main() {
 		}
 		ctx, cancel := context.WithTimeout(lifetime, 5*time.Minute)
 		stopConn := context.AfterFunc(ctx, func() { _ = conn.Close() })
-		e = tdsServeSession(ctx, conn, &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}, backendTLS, &http.Client{Timeout: 5 * time.Second}, *control, token, *session, *engine, *database, *target, func(ctx context.Context) (BrokerBackendCredential, error) {
-			if !local(ctx) {
-				return BrokerBackendCredential{}, errIPCUnavailable
-			}
-			return credentials, nil
-		}, local)
+		e = tdsServeSessionWithBackend(ctx, conn, &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}, &http.Client{Timeout: 5 * time.Second}, *control, token, *session, *engine, *database, connect, local)
 		stopConn()
 		cancel()
 		if e != nil {

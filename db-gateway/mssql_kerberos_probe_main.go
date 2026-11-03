@@ -10,6 +10,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/binary"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -59,14 +60,24 @@ func main() {
 		fmt.Println("isolated_windows_login_provisioned")
 		return
 	}
-	if *mode != "kerberos" && *mode != "ticket" {
+	if *mode != "kerberos" && *mode != "ticket" && *mode != "kerberos-material" && *mode != "ticket-material" {
 		kerberosProbeFail("unknown authentication mode")
 	}
-	auth, err := tdsNewKerberosAuth(*address, tdsKerberosProfile{Username: "gateway", Realm: "SAG.TEST", SPN: *spn, ConfigFile: *configFile, KeytabFile: *keytab})
+	var auth tdsIntegratedAuthenticator
+	if *mode == "kerberos-material" || *mode == "ticket-material" {
+		body, e := io.ReadAll(io.LimitReader(os.Stdin, 12001))
+		var material tdsKerberosMaterial
+		if e != nil || len(body) > 12000 || json.Unmarshal(body, &material) != nil {
+			kerberosProbeFail("private material input denied")
+		}
+		auth, err = tdsNewKerberosAuthMaterial(*address, material)
+	} else {
+		auth, err = tdsNewKerberosAuth(*address, tdsKerberosProfile{Username: "gateway", Realm: "SAG.TEST", SPN: *spn, ConfigFile: *configFile, KeytabFile: *keytab})
+	}
 	if err != nil {
 		kerberosProbeFail("Kerberos profile denied")
 	}
-	if *mode == "ticket" {
+	if *mode == "ticket" || *mode == "ticket-material" {
 		defer auth.Free()
 		token, err := auth.InitialBytes()
 		if err != nil || len(token) == 0 {

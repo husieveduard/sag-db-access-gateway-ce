@@ -186,8 +186,11 @@ final class AuthorizedGatewayVault
 
     private function supportsBackend(DbAccessSession $session): bool
     {
-        return $session->resource?->usesPasswordBackendAuthentication() === true
-            || app(ManagedKerberosProfiles::class)->supportsSession($session);
+        if ($session->resource?->usesPasswordBackendAuthentication() === true) {
+            $pinned = data_get($session->metadata, 'db.backend_auth_mode');
+            return $pinned === null || $pinned === $session->resource->backendAuthMode();
+        }
+        return app(ManagedKerberosProfiles::class)->supportsSession($session);
     }
 
     /**
@@ -218,7 +221,8 @@ final class AuthorizedGatewayVault
             || $session->expires_at === null
             || $session->expires_at->isPast()
             || ! $session->resource?->is_active
-            || ! $session->resource->usesPasswordBackendAuthentication()) {
+            || ! $session->resource->usesPasswordBackendAuthentication()
+            || ! $this->supportsBackend($session)) {
             throw new DomainException('Gateway session is not authorized.');
         }
 
@@ -251,7 +255,8 @@ final class AuthorizedGatewayVault
             || $session->expires_at === null
             || $session->expires_at->isPast()
             || !$session->resource?->is_active
-            || ! $session->resource->usesPasswordBackendAuthentication()) {
+            || ! $session->resource->usesPasswordBackendAuthentication()
+            || ! $this->supportsBackend($session)) {
             throw new DomainException('Gateway session is not authorized.');
         }
 

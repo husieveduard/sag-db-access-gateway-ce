@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Isolated Samba AD + native TDS Kerberos acceptance, never an existing domain."""
 import argparse
+import base64
 import json
 import os
 from pathlib import Path
@@ -47,18 +48,22 @@ def main():
         raise RuntimeError('Kerberos laboratory readiness deadline exceeded')
 
     def probe(mode='kerberos', extra=(), payload=None, check=True):
+        # Material mode has no keytab/config mounts or filename arguments.
+        mounts, profile_args = [], []
+        if mode not in ('kerberos-material', 'ticket-material'):
+            mounts = ['-v', str(work / 'gateway.keytab') + ':/run/gateway.keytab:ro',
+                      '-v', str(work / 'krb5.conf') + ':/run/krb5.conf:ro']
+            profile_args = ['--keytab=/run/gateway.keytab', '--config=/run/krb5.conf']
         return run(['docker', 'run', '--rm', '--name', client_container, '--user', '33:33', '--network', network,
                     '-v', str(args.probe.resolve()) + ':/run/native-probe:ro',
-                    '-v', str(work / 'gateway.keytab') + ':/run/gateway.keytab:ro',
-                    '-v', str(work / 'krb5.conf') + ':/run/krb5.conf:ro',
                     '-v', str(work / 'server.crt') + ':/run/ca.crt:ro',
                     '-v', str(work / 'wrong.crt') + ':/run/wrong.crt:ro',
-                    '--entrypoint', '/run/native-probe', '-i', args.ad_image,
-                    '--mode=' + mode, '--keytab=/run/gateway.keytab', '--config=/run/krb5.conf',
-                    '--ca=/run/ca.crt', *extra], payload, check=check, timeout=40)
+                    *mounts, '--entrypoint', '/run/native-probe', '-i', args.ad_image,
+                    '--mode=' + mode, *profile_args, '--ca=/run/ca.crt', *extra],
+                   payload, check=check, timeout=40)
 
-    def denied(mode, extra):
-        result = probe(mode, extra, check=False)
+    def denied(mode, extra, payload=None):
+        result = probe(mode, extra, payload=payload, check=False)
         if result.returncode == 0:
             raise RuntimeError('invalid Kerberos authentication unexpectedly succeeded')
 
@@ -78,6 +83,9 @@ def main():
             result = run(['docker', 'exec', dc, 'dig', '@127.0.0.1', '+short', *query])
             if expected.encode() not in result.stdout:
                 raise RuntimeError('AD NetBIOS or reverse DNS failed')
+        # Capture only in runner memory; never print keytab bytes or encode them in argv/env.
+        gateway_keytab = run(['docker', 'exec', '-u', 'root', dc, 'cat',
+                              '/var/lib/samba/private/sag-keys/gateway.keytab']).stdout
         for name in ('gateway.keytab', 'sql.keytab'):
             run(['docker', 'cp', dc + ':/var/lib/samba/private/sag-keys/' + name, str(work / name)])
         (work / 'krb5.conf').write_text('[libdefaults]\n default_realm = SAG.TEST\n default_keytab_name = /var/opt/mssql/secrets/mssql.keytab\n default_ccache_name = ""\n dns_lookup_kdc = false\n dns_lookup_realm = false\n[realms]\n SAG.TEST = {\n  kdc = dc.sag.test\n  admin_server = dc.sag.test\n  default_domain = SAG.TEST\n }\n[domain_realm]\n .sag.test = SAG.TEST\n sag.test = SAG.TEST\n')
@@ -96,6 +104,12 @@ def main():
         run(['docker', 'run', '--rm', '--user', 'root', '--entrypoint', '/bin/sh',
              '-v', str(work) + ':/fixture', args.ad_image, '-c',
              'chown 0:0 /fixture/krb5.conf; chown 33:33 /fixture/gateway.keytab; chmod 600 /fixture/gateway.keytab; chown 10001:0 /fixture/sql.keytab /fixture/server.key; chmod 600 /fixture/sql.keytab /fixture/server.key'])
+        material = json.dumps({'kind': 'kerberos_keytab', 'profile_id': 'isolated-ad',
+                               'username': 'gateway', 'realm': 'SAG.TEST',
+                               'spn': 'MSSQLSvc/sql.sag.test:1433',
+                               'config_b64': base64.b64encode((work / 'krb5.conf').read_bytes()).decode(),
+                               'keytab_b64': base64.b64encode(gateway_keytab).decode()}).encode()
+        probe('ticket-material', payload=material)
         probe('ticket')
         print('Native Kerberos client obtained an AES service ticket from real AD', flush=True)
         denied('ticket', ['--keytab=/run/missing.keytab'])
@@ -124,9 +138,19 @@ def main():
             if b'kerberos_principal=SAG\\gateway; SELECT 1 = 1' not in result.stdout:
                 raise RuntimeError('SQL Server did not confirm Kerberos backend identity')
             print(result.stdout.decode().strip(), flush=True)
+            memory_result = probe('kerberos-material', payload=material)
+            if b'kerberos_principal=SAG\\gateway; SELECT 1 = 1' not in memory_result.stdout:
+                raise RuntimeError('in-memory keytab SQL identity was not confirmed')
+            print('In-memory keytab without file mounts: AD principal and SELECT 1 confirmed', flush=True)
+            invalid = dict(json.loads(material), keytab_b64='')
+            denied('kerberos-material', [], payload=json.dumps(invalid).encode())
+            invalid = dict(json.loads(material), spn='MSSQLSvc/other.sag.test:1433')
+            denied('kerberos-material', [], payload=json.dumps(invalid).encode())
+            denied('kerberos-material', ['--ca=/run/wrong.crt'], payload=material)
             denied('kerberos', ['--ca=/run/wrong.crt'])
         run(['docker', 'stop', dc])
         denied('ticket', [])
+        denied('ticket-material', [], payload=material)
         print('Missing keytab, wrong/unknown SPN and KDC loss fail closed; no SQL fallback', flush=True)
     except Exception:
         diagnostic = run(['docker', 'exec', sql, 'sh', '-c', 'getent hosts SAG sag.test dc.sag.test; tail -40 /var/opt/mssql/log/security.log'], check=False)

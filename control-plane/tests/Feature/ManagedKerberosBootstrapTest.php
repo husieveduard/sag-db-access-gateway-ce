@@ -117,6 +117,8 @@ final class ManagedKerberosBootstrapTest extends TestCase
     {
         $session = $this->makeKerberosSession();
         $session->resource->update(['target_options' => ['backend_auth_mode' => 'mssql_sql_auth']]);
+        $session->update(['metadata' => ['db' => ['gateway_pid' => 12345, 'gateway_proc_start_ticks' => '987654321',
+            'backend_auth_mode' => 'mssql_sql_auth']]]);
         try {
             $this->take($session);
             $this->fail('SQL session received Kerberos material.');
@@ -211,5 +213,22 @@ final class ManagedKerberosBootstrapTest extends TestCase
         config()->set('sag.db_gateway.kerberos.profiles_file', $path);
         $material = $this->take($session);
         $this->assertStringNotContainsString($this->directory, json_encode($material));
+    }
+
+    public function test_changing_windows_resource_to_sql_does_not_enable_password_fallback(): void
+    {
+        $session = $this->makeKerberosSession();
+        $session->resource->update(['target_options' => ['backend_auth_mode' => 'mssql_sql_auth']]);
+        try {
+            app(AuthorizedGatewayVault::class)->takeBootstrapCredentials($session->public_id,
+                $session->resource_id, 12345, '987654321', app(ResourceCredentialVault::class));
+            $this->fail('Pinned Windows session received a stale SQL password.');
+        } catch (DomainException) {
+            $this->assertNull(data_get($session->fresh()->metadata, 'db.bootstrap_consumed_at'));
+        }
+        $session->update(['status' => 'started']);
+        $this->assertFalse(app(AuthorizedGatewayVault::class)->isActiveSessionResource($session->public_id, $session->resource_id));
+        $this->expectException(DomainException::class);
+        app(AuthorizedGatewayVault::class)->forActiveSession($session->public_id, app(ResourceCredentialVault::class));
     }
 }

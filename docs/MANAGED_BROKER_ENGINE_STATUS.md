@@ -20,8 +20,13 @@ MySQL/MariaDB now use their own native adapter and isolated MySQL 8.4/MariaDB
 MSSQL now has a separate native TDS laboratory adapter and isolated SQL Server
 2022 CI suite; see [MSSQL lab details](MSSQL_VAULT_SQL_E2E.md). Its limited protocol
 surface does not enable Integrated Authentication or production managed mode.
-An explicit Windows backend selection is stored and shown but remains blocked
-until its Kerberos implementation and AD E2E verification are complete.
+An explicit Windows backend selection is stored and shown but application
+launch remains blocked. Its native Kerberos adapter now passes real isolated
+Samba AD/SQL Server principal and SELECT 1 acceptance, including in-memory
+keytab input without client file mounts. Typed one-time Laravel FD 3/Unix IPC
+bootstrap and an explicit binary Kerberos strategy are implemented. Application
+lifecycle/UI profile wiring and full managed Windows SQL/revocation acceptance
+remain open; see [the Windows contract](mssql-integrated-authentication.md).
 
 The CE runtime image now packages the three native broker executables and the
 Unix IPC worker as separate binaries. CI checks their presence and executable

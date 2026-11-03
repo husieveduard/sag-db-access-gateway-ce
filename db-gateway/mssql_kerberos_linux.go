@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"io"
 	"net"
 	"os"
@@ -25,22 +26,34 @@ type tdsKerberosProfile struct {
 type tdsKerberosAuth struct {
 	client *client.Client
 	spn    string
+	keytabData []byte
 }
 
 func tdsNewKerberosAuth(address string, profile tdsKerberosProfile) (tdsIntegratedAuthenticator, error) {
-	host, port, err := net.SplitHostPort(address)
-	portNumber, portErr := strconv.Atoi(port)
-	if err != nil || portErr != nil || portNumber < 1 || portNumber > 65535 || net.ParseIP(host) != nil || !strings.Contains(host, ".") ||
-		profile.SPN != "MSSQLSvc/"+net.JoinHostPort(strings.ToLower(host), port) ||
-		!regexp.MustCompile(`^[A-Za-z0-9_.\-$]{1,128}$`).MatchString(profile.Username) ||
-		!regexp.MustCompile(`^[A-Z0-9][A-Z0-9.\-]{1,127}$`).MatchString(profile.Realm) {
-		return nil, errTDSProtocol
-	}
 	confBytes, err := tdsKerberosFile(profile.ConfigFile, false, 65536)
 	if err != nil {
 		return nil, errTDSProtocol
 	}
-	cfg, err := config.NewFromReader(strings.NewReader(string(confBytes)))
+	data, err := tdsKerberosFile(profile.KeytabFile, true, 1<<20)
+	if err != nil {
+		return nil, errTDSProtocol
+	}
+	defer clear(data)
+	return tdsNewKerberosAuthBytes(address, profile.Username, profile.Realm, profile.SPN, confBytes, data)
+}
+
+// In-memory entry point for the process-bound IPC grant; no filesystem fallback.
+func tdsNewKerberosAuthBytes(address, username, realmName, spn string, confBytes, data []byte) (tdsIntegratedAuthenticator, error) {
+	host, port, err := net.SplitHostPort(address)
+	portNumber, portErr := strconv.Atoi(port)
+	if err != nil || portErr != nil || portNumber < 1 || portNumber > 65535 || net.ParseIP(host) != nil || !strings.Contains(host, ".") ||
+		spn != "MSSQLSvc/"+net.JoinHostPort(strings.ToLower(host), port) ||
+		!regexp.MustCompile(`^[A-Za-z0-9_.\-$]{1,128}$`).MatchString(username) ||
+		!regexp.MustCompile(`^[A-Z0-9][A-Z0-9.\-]{1,127}$`).MatchString(realmName) ||
+		len(confBytes) == 0 || len(confBytes) > 65536 || len(data) == 0 || len(data) > 1<<20 {
+		return nil, errTDSProtocol
+	}
+	cfg, err := config.NewFromReader(bytes.NewReader(confBytes))
 	if err != nil {
 		return nil, errTDSProtocol
 	}
@@ -60,23 +73,21 @@ func tdsNewKerberosAuth(address string, profile tdsKerberosProfile) (tdsIntegrat
 	cfg.LibDefaults.PermittedEnctypeIDs = []int32{18, 17}
 	found := false
 	for _, realm := range cfg.Realms {
-		if realm.Realm == profile.Realm && len(realm.KDC) > 0 {
+		if realm.Realm == realmName && len(realm.KDC) > 0 {
 			found = true
 		}
 	}
 	if !found {
 		return nil, errTDSProtocol
 	}
-	data, err := tdsKerberosFile(profile.KeytabFile, true, 1<<20)
-	if err != nil {
-		return nil, errTDSProtocol
-	}
+	owned := append([]byte(nil), data...)
 	kt := &keytab.Keytab{}
-	if kt.Unmarshal(data) != nil {
+	if kt.Unmarshal(owned) != nil {
+		clear(owned)
 		return nil, errTDSProtocol
 	}
-	cl := client.NewWithKeytab(profile.Username, profile.Realm, kt, cfg, client.DisablePAFXFAST(true))
-	return &tdsKerberosAuth{client: cl, spn: profile.SPN}, nil
+	cl := client.NewWithKeytab(username, realmName, kt, cfg, client.DisablePAFXFAST(true))
+	return &tdsKerberosAuth{client: cl, spn: spn, keytabData: owned}, nil
 }
 
 func tdsKerberosFile(path string, secret bool, limit int64) ([]byte, error) {
@@ -139,4 +150,6 @@ func (auth *tdsKerberosAuth) Free() {
 		auth.client.Destroy()
 		auth.client = nil
 	}
+	clear(auth.keytabData)
+	auth.keytabData = nil
 }

@@ -22,11 +22,25 @@ func tdsValidateBatch(p []byte) bool {
 	return e == nil
 }
 func tdsServeSession(ctx context.Context, raw net.Conn, frontendTLS, backendTLS *tls.Config, client *http.Client, control, token, session, engine, database, target string, vault func(context.Context) (BrokerBackendCredential, error), local func(context.Context) bool) error {
+	if vault == nil {
+		if raw != nil { raw.Close() }
+		return errTDSProtocol
+	}
+	return tdsServeSessionWithBackend(ctx, raw, frontendTLS, client, control, token, session, engine, database, func(ctx context.Context) (net.Conn, error) {
+		credentials, err := vault(ctx)
+		if err != nil { return nil, errTDSProtocol }
+		return tdsBackendConnect(ctx, target, backendTLS, credentials.Username, credentials.Password, database)
+	}, local)
+}
+
+// Both explicit backend strategies share frontend authentication, SQL bounds,
+// active-session checks and revocation. Connect runs only after the SAG login.
+func tdsServeSessionWithBackend(ctx context.Context, raw net.Conn, frontendTLS *tls.Config, client *http.Client, control, token, session, engine, database string, connect func(context.Context) (net.Conn, error), local func(context.Context) bool) error {
 	if raw == nil {
 		return errTDSProtocol
 	}
 	defer raw.Close()
-	if ctx == nil || ctx.Err() != nil || local == nil || vault == nil || !local(ctx) {
+	if ctx == nil || ctx.Err() != nil || local == nil || connect == nil || !local(ctx) {
 		return errTDSProtocol
 	}
 	front, e := tdsFrontend(ctx, raw, frontendTLS, database, func(user, password string) bool {
@@ -36,14 +50,13 @@ func tdsServeSession(ctx context.Context, raw net.Conn, frontendTLS, backendTLS 
 	if e != nil {
 		return e
 	}
-	credentials, e := vault(ctx)
-	if e != nil {
+	if !local(ctx) {
 		return errTDSProtocol
 	}
-	backend, e := tdsBackendConnect(ctx, target, backendTLS, credentials.Username, credentials.Password, database)
-	credentials.Password = ""
-	if e != nil {
-		return e
+	backend, e := connect(ctx)
+	if e != nil || backend == nil {
+		if backend != nil { backend.Close() }
+		return errTDSProtocol
 	}
 	defer backend.Close()
 	if !checkBrokerEngineSessionActive(ctx, client, control, token, session, engine, local) {

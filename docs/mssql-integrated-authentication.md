@@ -5,8 +5,9 @@ for laboratory acceptance; managed Windows sessions remain disabled**.
 Selecting `mssql_kerberos_service` still blocks SQL password retrieval and broker
 launch. The native adapter preserves the existing TDS transport and SQL relay;
 it adds a distinct SSPI/LOGIN7 backend handshake with no SQL authentication
-fallback. Gateway session integration and its release acceptance are still
-required before enabling this mode.
+fallback. Typed one-time IPC bootstrap and the broker's in-memory Kerberos
+strategy are implemented. Application lifecycle/UI integration and full managed
+Windows acceptance are still required before enabling this mode.
 
 ## Isolated native acceptance
 
@@ -31,8 +32,10 @@ and KDC loss must fail closed. SQL Server uses its separate `sqlservice` keytab.
 The native client uses AES128/AES256, an explicit realm/KDC configuration and a
 target-bound MSSQL SPN. It does not discover credentials from the environment,
 rewrite SPNs through DNS CNAMEs, or negotiate NTLM. Keytabs must be regular,
-owner-only files owned by the broker UID; symlinks are refused. Neither tickets
-nor key material are returned by the probe.
+owner-only files owned by the broker UID; symlinks are refused. The acceptance also supplies a typed keytab/config envelope on a private stdin
+pipe and repeats the real AD principal/SELECT 1 check without mounting keytab or
+configuration files in the native client. Neither tickets nor key material are
+returned by the probe.
 
 These checks authenticate only the Gateway-to-target adapter. They do not yet
 enable the Laravel managed Windows mode or validate its temporary-client
@@ -131,6 +134,28 @@ contains base64-encoded config/keytab bytes in server memory, never a SQL
 password or keytab path. SQL and Kerberos receivers reject cross-type or mixed
 responses. Windows sessions cannot retrieve a stale SQL Vault credential.
 
-Managed broker strategy selection, alias selection in the resource form and
-the full temporary-SAG-client Kerberos SQL/revocation acceptance remain release
+## Broker in-memory strategy
+
+The MSSQL binary explicitly selects `--backend-auth=mssql_sql_auth` (default)
+or `--backend-auth=mssql_kerberos_service`. Unknown strategies and delegation
+are rejected. The Windows strategy consumes only `bootstrap_kerberos`, validates
+the target-bound material, and constructs a fresh Kerberos client for the
+readiness probe and each backend connection. It does not open a keytab/config
+file, read a credential cache, or request the SQL Vault slot.
+
+Both strategies share the existing TDS frontend and SQL relay. A valid temporary
+SAG login and a fresh local authorization check are required before connecting
+to the backend. The same active-session watcher closes frontend/backend
+connections on invalidation. The application's launcher still blocks Windows
+resources; this binary capability alone does not make them launchable.
+
+The real Laravel FD 3/Unix integration test uses a disposable SQLite control
+plane and private opaque keytab fixture. It verifies the typed grant, persisted
+one-time consumption, replay denial, activation and live invalidation after
+changing authentication mode/revoking the session. The separate AD job proves
+the native in-memory material path against real Kerberos and SQL Server.
+Neither component test is the full temporary-SAG-client Windows acceptance.
+
+Application lifecycle wiring, alias selection in the resource form, and the
+full temporary-SAG-client Kerberos SQL/revocation acceptance remain release
 gates. The application's existing Windows launch block stays in place.
