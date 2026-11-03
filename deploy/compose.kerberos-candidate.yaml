@@ -1,0 +1,15 @@
+# Optional Windows backend configuration for an isolated managed candidate.
+# Apply after compose.managed-candidate.yaml; never included by default.
+services:
+  app:
+    environment:
+      SAG_MSSQL_KERBEROS_ENABLED: "true"
+      SAG_MSSQL_KERBEROS_PROFILES_FILE: /etc/sag/kerberos/profiles.json
+    volumes:
+      - ${SAG_CE_KERBEROS_DIR:?set an absolute private Kerberos directory}/profiles.json:/etc/sag/kerberos/profiles.json:ro
+  worker:
+    environment:
+      SAG_MSSQL_KERBEROS_ENABLED: "true"
+      SAG_MSSQL_KERBEROS_PROFILES_FILE: /etc/sag/kerberos/profiles.json
+    volumes:
+      - ${SAG_CE_KERBEROS_DIR:?set an absolute private Kerberos directory}:/etc/sag/kerberos:ro
