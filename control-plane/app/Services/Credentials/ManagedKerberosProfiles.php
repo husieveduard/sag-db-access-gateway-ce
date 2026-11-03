@@ -10,6 +10,16 @@ use Throwable;
 /** Runtime-owned references only. AD keys never belong in resource options. */
 final class ManagedKerberosProfiles
 {
+    /** Only public aliases reach the resource form; never serialize profiles. */
+    public function aliases(): array
+    {
+        try {
+            return array_keys($this->profiles());
+        } catch (Throwable) {
+            return [];
+        }
+    }
+
     public function supportsResource(DatabaseResource $resource): bool
     {
         try {

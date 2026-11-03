@@ -4,6 +4,7 @@ namespace App\Services\DbAccess;
 
 use App\Models\DbAccessSession;
 use App\Models\GatewayTemporaryCredential;
+use App\Services\Credentials\ManagedBackendAuthentication;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 use Throwable;
@@ -23,7 +24,7 @@ class LabManagedBrokerLifecycleService extends DbGatewayLifecycleService
     {
         $label = $lab ? 'laboratory' : 'runtime';
         $session->loadMissing('resource');
-        if ($session->resource && ! $session->resource->usesPasswordBackendAuthentication()) {
+        if ($session->resource && ! app(ManagedBackendAuthentication::class)->supportsSession($session)) {
             throw new RuntimeException('Selected backend authentication adapter is not implemented; refusing SQL authentication fallback.');
         }
         $engine = $session->resource?->engine === 'postgres' ? 'postgresql' : $session->resource?->engine;
@@ -60,7 +61,7 @@ class LabManagedBrokerLifecycleService extends DbGatewayLifecycleService
             $locked = DbAccessSession::query()->with('resource')->whereKey($session->id)->lockForUpdate()->firstOrFail();
             $this->assertStartable($locked);
             if ($locked->mode !== 'temporary' || $locked->resource->auth_mode !== 'managed'
-                || ! $locked->resource->usesPasswordBackendAuthentication()
+                || ! app(ManagedBackendAuthentication::class)->supportsSession($locked)
                 || ! in_array($locked->resource->target_tls_mode, $adapter === 'postgresql' ? ['disable', 'verify-full'] : ['verify-full'], true) || empty($locked->resource->target_database)
                 || (! $lab && $locked->resource->target_tls_mode !== 'verify-full')
                 || ($locked->resource->engine === 'postgres' ? 'postgresql' : $locked->resource->engine) !== $engine
@@ -69,7 +70,8 @@ class LabManagedBrokerLifecycleService extends DbGatewayLifecycleService
                 throw new RuntimeException('Session is not eligible for managed '.$label.' launch.');
             }
             $metadata = is_array($locked->metadata) ? $locked->metadata : [];
-            $metadata['db'] = array_merge(is_array($metadata['db'] ?? null) ? $metadata['db'] : [], [
+            $metadata['db'] = array_merge(is_array($metadata['db'] ?? null) ? $metadata['db'] : [],
+                app(ManagedBackendAuthentication::class)->bindingFor($locked->resource), [
                 $scope => true, 'engine' => $engine, 'gateway_pid' => null,
                 'gateway_proc_start_ticks' => null, 'bootstrap_consumed_at' => null,
                 'gateway_log_path' => $logDir.'/session-'.$locked->id.'.log',
@@ -96,6 +98,9 @@ class LabManagedBrokerLifecycleService extends DbGatewayLifecycleService
             if ($adapter !== 'postgresql') {
                 $args[] = '--backend-ca='.$backendCa;
                 $args[] = '--engine='.$engine;
+                if ($adapter === 'mssql') {
+                    $args[] = '--backend-auth='.data_get($session->metadata, 'db.backend_auth_mode');
+                }
             } elseif ($session->resource->target_tls_mode === 'verify-full') {
                 $args[] = '--backend-ca='.$backendCa;
             }
@@ -164,7 +169,7 @@ class LabManagedBrokerLifecycleService extends DbGatewayLifecycleService
                 $locked = DbAccessSession::query()->with('resource')->whereKey($session->id)->lockForUpdate()->firstOrFail();
                 if ($locked->status !== 'starting' || $locked->expires_at?->isFuture() !== true
                     || ! $locked->resource?->is_active || data_get($locked->metadata, 'db.bootstrap_consumed_at') === null
-                    || ! $locked->resource->usesPasswordBackendAuthentication()
+                    || ! app(ManagedBackendAuthentication::class)->supportsSession($locked)
                     || ! $this->isExpectedGatewayProcess($pid, $locked)) {
                     throw new RuntimeException('activation denied');
                 }

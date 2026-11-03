@@ -204,4 +204,83 @@ final class ResourceBackendAuthenticationTest extends TestCase
             }
         }
     }
+
+    private function enableKerberosProfiles(): void
+    {
+        config()->set('sag.db_gateway.managed_runtime.enabled', true);
+        config()->set('sag.db_gateway.kerberos.enabled', true);
+        config()->set('sag.db_gateway.kerberos.profiles', ['service-a' => [
+            'target' => 'sql.example.test:1433', 'spn' => 'MSSQLSvc/sql.example.test:1433',
+            'username' => 'gateway', 'realm' => 'EXAMPLE.TEST',
+            'config_file' => '/private/krb5.conf', 'keytab_file' => '/private/service.keytab',
+        ], 'service-b' => [
+            'target' => 'sql.example.test:1433', 'spn' => 'MSSQLSvc/sql.example.test:1433',
+            'username' => 'other-service', 'realm' => 'EXAMPLE.TEST',
+            'config_file' => '/private/krb5.conf', 'keytab_file' => '/private/other.keytab',
+        ]]);
+    }
+
+    public function test_windows_resource_selects_only_public_target_bound_profile_aliases(): void
+    {
+        $this->signIn();
+        $this->enableKerberosProfiles();
+        $this->get(route('admin.resources.create'))->assertOk()->assertSee('service-a')
+            ->assertDontSee('/private/')->assertDontSee('other-service')->assertDontSee('EXAMPLE.TEST');
+        $input = $this->data(['auth_mode' => 'managed', 'backend_auth_mode' => 'mssql_kerberos_service']);
+        $this->post(route('admin.resources.store'), $input)->assertSessionHasErrors('kerberos_profile');
+        $this->post(route('admin.resources.store'), $input + ['kerberos_profile' => 'unknown'])
+            ->assertSessionHasErrors('kerberos_profile');
+        $this->post(route('admin.resources.store'), array_replace($input, ['target_host' => 'wrong.example.test', 'kerberos_profile' => 'service-a']))
+            ->assertSessionHasErrors('kerberos_profile');
+        $this->post(route('admin.resources.store'), $input + ['kerberos_profile' => 'service-a'])
+            ->assertSessionHasNoErrors()->assertRedirect();
+        $resource = DatabaseResource::firstOrFail();
+        $this->assertSame('service-a', data_get($resource->target_options, 'kerberos_profile'));
+        $this->assertSame('service-a', data_get(AuditEvent::firstOrFail()->event_data, 'resource.kerberos_profile'));
+        $this->get(route('admin.resources.edit', $resource))->assertOk()->assertSee('service-a')->assertDontSee('id="vault_password"', false);
+    }
+
+    public function test_windows_web_session_pins_profile_target_and_issues_only_temporary_sag_credentials(): void
+    {
+        $user = $this->signIn();
+        $this->enableKerberosProfiles();
+        $resource = $this->resource($user, ['backend_auth_mode' => 'mssql_kerberos_service', 'kerberos_profile' => 'service-a']);
+        $this->post(route('admin.sessions.store'), ['resource_id' => $resource->id, 'mode' => 'temporary',
+            'ttl_seconds' => 3600, 'source_cidr' => '127.0.0.1/32', 'db_username' => ''])
+            ->assertSessionHasNoErrors()->assertRedirect();
+        $session = DbAccessSession::firstOrFail();
+        $this->assertSame('service-a', data_get($session->metadata, 'db.kerberos_profile'));
+        $this->assertSame('mssql_kerberos_service', data_get($session->metadata, 'db.backend_auth_mode'));
+        $this->assertNotEmpty(data_get($session->metadata, 'db.backend_target'));
+        $issued = session('managed_temporary_credentials');
+        $this->assertNotSame('gateway', $issued['username']);
+        $this->assertDatabaseCount('database_resource_credentials', 0);
+        $this->get(route('admin.sessions.show', $session))->assertOk()->assertSee($issued['password'])
+            ->assertDontSee('/private/')->assertDontSee('keytab')->assertHeader('Cache-Control', 'max-age=0, no-store, private');
+        $this->get(route('admin.sessions.show', $session))->assertOk()->assertDontSee($issued['password']);
+        $policy = app(\App\Services\Credentials\ManagedBackendAuthentication::class);
+        $this->assertTrue($policy->supportsSession($session->fresh()));
+        $resource->update(['target_database' => 'different']);
+        $this->assertFalse($policy->supportsSession($session->fresh()));
+    }
+
+    public function test_profile_switch_is_blocked_for_live_sessions_and_sql_mode_clears_it(): void
+    {
+        $user = $this->signIn();
+        $this->enableKerberosProfiles();
+        $resource = $this->resource($user, ['backend_auth_mode' => 'mssql_kerberos_service', 'kerberos_profile' => 'service-a']);
+        $input = $this->data(['auth_mode' => 'managed', 'backend_auth_mode' => 'mssql_kerberos_service', 'kerberos_profile' => 'service-b']);
+        foreach (['starting', 'started', 'stopping'] as $status) {
+            $session = DbAccessSession::create(['public_id' => 'PROFILE-'.$status, 'owner_user_id' => $user->id,
+                'resource_id' => $resource->id, 'status' => $status, 'mode' => 'temporary', 'expires_at' => now()->addHour()]);
+            $this->put(route('admin.resources.update', $resource), $input)->assertSessionHasErrors('resource');
+            $this->assertSame('service-a', data_get($resource->fresh()->target_options, 'kerberos_profile'));
+            $session->delete();
+        }
+        $this->put(route('admin.resources.update', $resource), $input)->assertSessionHasNoErrors();
+        $this->put(route('admin.resources.update', $resource), $this->data(['backend_auth_mode' => 'mssql_sql_auth']))
+            ->assertSessionHasNoErrors();
+        $this->assertNull(data_get($resource->fresh()->target_options, 'kerberos_profile'));
+    }
+
 }

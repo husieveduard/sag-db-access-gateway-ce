@@ -94,6 +94,9 @@
             @if ($resource->engine === 'mssql')
                 <span class="muted">{{ __('resources.backend_auth.label') }}:
                     {{ $resource->backendAuthMode() === 'mssql_sql_auth' ? __('resources.backend_auth.sql') : ($resource->backendAuthMode() === 'mssql_kerberos_service' ? __('resources.backend_auth.windows') : $resource->backendAuthMode()) }}
+                    @if (data_get($resource->target_options, 'kerberos_profile'))
+                        <div>{{ __('resources.backend_auth.profile') }}: {{ data_get($resource->target_options, 'kerberos_profile') }}</div>
+                    @endif
                 </span><br>
             @endif
 

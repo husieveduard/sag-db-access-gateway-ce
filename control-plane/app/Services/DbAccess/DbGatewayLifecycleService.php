@@ -6,6 +6,7 @@ use App\Models\AuditEvent;
 use App\Models\DbAccessSession;
 use App\Models\DbConnection;
 use App\Models\DbQueryEvent;
+use App\Services\Credentials\ManagedBackendAuthentication;
 use Illuminate\Support\Carbon;
 use RuntimeException;
 
@@ -18,7 +19,7 @@ class DbGatewayLifecycleService
         $this->assertStartable($session);
 
         $resource = $session->resource;
-        if (! $resource->usesPasswordBackendAuthentication()) {
+        if (! app(ManagedBackendAuthentication::class)->supportsSession($session)) {
             throw new RuntimeException('Selected backend authentication adapter is not implemented; refusing SQL authentication fallback.');
         }
         if ($resource->auth_mode === 'managed' && $session->mode === 'temporary'

@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   mssql-kerberos-native:
-    name: MSSQL Kerberos AD SQL and memory handoff E2E
+    name: MSSQL Kerberos managed AD SQL E2E
     runs-on: ubuntu-latest
     timeout-minutes: 18
     steps:
@@ -18,14 +18,28 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.22.x'
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: bcmath, mbstring, pcntl, pdo_sqlite, zip
+          coverage: none
+      - name: Install Laravel for managed Windows acceptance
+        working-directory: control-plane
+        run: |
+          composer install --no-interaction --prefer-dist --no-progress
+          cp .env.example .env
+          mkdir -p storage/framework/views storage/framework/cache/data storage/framework/sessions bootstrap/cache
       - name: Build isolated Samba AD and native Kerberos probe
         env:
           CGO_ENABLED: '0'
         run: |
           docker build -f deploy/kerberos-lab/Dockerfile -t sag-ad-acceptance .
           sh scripts/build-mssql-kerberos-probe.sh /tmp/sag-mssql-kerberos-probe
+          scripts/build-mssql-lab-broker.sh /tmp/sag-mssql-kerberos-broker
+          cd db-gateway
+          go test -c -o /tmp/sag-mssql-kerberos-tests
       - name: Verify native Kerberos SQL login against real AD and SQL Server
-        run: python3 scripts/test-mssql-kerberos.py --ad-image sag-ad-acceptance --probe /tmp/sag-mssql-kerberos-probe
+        run: python3 scripts/test-mssql-kerberos.py --ad-image sag-ad-acceptance --probe /tmp/sag-mssql-kerberos-probe --managed-tests /tmp/sag-mssql-kerberos-tests --managed-broker /tmp/sag-mssql-kerberos-broker
 
   managed-compose:
     name: Managed Compose SQL acceptance (${{ matrix.engine }})
@@ -266,6 +280,13 @@ jobs:
               -f deploy/compose.yaml \
               -f deploy/compose.managed-candidate.yaml \
               config --quiet
+          SAG_CE_MANAGED_CERT_DIR=/tmp/sag-managed-candidate-fixture \
+            SAG_CE_KERBEROS_DIR=/tmp/sag-kerberos-candidate-fixture \
+            docker compose --project-directory "$PWD" \
+              --env-file deploy/.env.example \
+              -f deploy/compose.yaml \
+              -f deploy/compose.managed-candidate.yaml \
+              -f deploy/compose.kerberos-candidate.yaml config --quiet
 
   vault-ipc-sql:
     name: Laravel Vault Unix IPC SQL E2E (PHP ${{ matrix.php }})

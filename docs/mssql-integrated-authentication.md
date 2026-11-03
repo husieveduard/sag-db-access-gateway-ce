@@ -1,13 +1,12 @@
 # MSSQL Windows Integrated Authentication — design contract
 
-Status: **the native backend adapter and isolated AD test stand are available
-for laboratory acceptance; managed Windows sessions remain disabled**.
-Selecting `mssql_kerberos_service` still blocks SQL password retrieval and broker
-launch. The native adapter preserves the existing TDS transport and SQL relay;
-it adds a distinct SSPI/LOGIN7 backend handshake with no SQL authentication
-fallback. Typed one-time IPC bootstrap and the broker's in-memory Kerberos
-strategy are implemented. Application lifecycle/UI integration and full managed
-Windows acceptance are still required before enabling this mode.
+Status: **implemented behind explicit managed-runtime and Kerberos candidate
+flags; disabled in the default deployment**. The existing lifecycle starts the
+MSSQL broker with an explicit Kerberos strategy, pinned service-profile alias,
+authentication mode and target binding. The resource form selects only public
+profile aliases; clients continue to use temporary SAG credentials. There is no
+SQL authentication fallback. Release acceptance must run on an isolated AD/SQL
+Server stand before enabling a deployment.
 
 ## Isolated native acceptance
 
@@ -37,9 +36,27 @@ pipe and repeats the real AD principal/SELECT 1 check without mounting keytab or
 configuration files in the native client. Neither tickets nor key material are
 returned by the probe.
 
-These checks authenticate only the Gateway-to-target adapter. They do not yet
-enable the Laravel managed Windows mode or validate its temporary-client
-bootstrap, authorization and revocation path.
+Without the managed arguments, these checks authenticate only the backend
+adapter. For the full managed runtime path, install Laravel development
+dependencies and build the native broker plus the static Go test executable:
+
+```sh
+CGO_ENABLED=0 scripts/build-mssql-lab-broker.sh /tmp/sag-mssql-kerberos-broker
+(cd db-gateway && CGO_ENABLED=0 go test -c -o /tmp/sag-mssql-kerberos-tests)
+python3 scripts/test-mssql-kerberos.py --ad-image sag-ad-acceptance \
+  --probe /tmp/sag-mssql-kerberos-probe \
+  --managed-tests /tmp/sag-mssql-kerberos-tests \
+  --managed-broker /tmp/sag-mssql-kerberos-broker
+```
+
+The managed test runs as UID 33, uses Laravel's real runtime launcher, the
+trusted Unix worker and an independent Microsoft SQL client with temporary SAG
+credentials. It checks the actual AD principal, SELECT 1, typed RPC, foreign
+bootstrap denial, active revoke/expiry, process replacement, worker loss, idle
+cleanup and revocation during startup. It checks zero backend sessions after
+invalidation and scans captured HTTP/broker logs, broker argv and environment
+for the private AD keytab and administrator password. The administrator password
+enters the test process on stdin only. CI runs this combined acceptance.
 
 ## User-facing connection contract
 
@@ -98,8 +115,8 @@ tests pass with a working TDS/Kerberos adapter.
 ## Process-bound Kerberos material bootstrap
 
 The default-off `SAG_MSSQL_KERBEROS_ENABLED` capability permits a distinct
-`bootstrap_kerberos` Unix operation. This does not yet enable Windows session
-launch in the application. The request carries only the session/resource IDs;
+`bootstrap_kerberos` Unix operation and enables validated service profiles for
+managed launch when the managed runtime is explicitly enabled. The request carries only the session/resource IDs;
 the Unix worker supplies the kernel peer PID/start ticks to the private Laravel
 command. Only its inherited FD 3 pipe may carry the response.
 
@@ -146,8 +163,10 @@ file, read a credential cache, or request the SQL Vault slot.
 Both strategies share the existing TDS frontend and SQL relay. A valid temporary
 SAG login and a fresh local authorization check are required before connecting
 to the backend. The same active-session watcher closes frontend/backend
-connections on invalidation. The application's launcher still blocks Windows
-resources; this binary capability alone does not make them launchable.
+connections on invalidation. The application launcher requires an enabled profile and pins its public alias,
+authentication mode and target. A change to any bound target value invalidates
+the session. Profile changes are refused while a session is starting, active or
+stopping.
 
 The real Laravel FD 3/Unix integration test uses a disposable SQLite control
 plane and private opaque keytab fixture. It verifies the typed grant, persisted
@@ -156,6 +175,19 @@ changing authentication mode/revoking the session. The separate AD job proves
 the native in-memory material path against real Kerberos and SQL Server.
 Neither component test is the full temporary-SAG-client Windows acceptance.
 
-Application lifecycle wiring, alias selection in the resource form, and the
-full temporary-SAG-client Kerberos SQL/revocation acceptance remain release
-gates. The application's existing Windows launch block stays in place.
+## Optional isolated deployment
+
+Apply `deploy/compose.kerberos-candidate.yaml` after the base Compose and managed
+candidate overlay. Set `SAG_CE_KERBEROS_DIR` to a private absolute directory with
+`profiles.json`, `krb5.conf` and the profile's keytab. The example profile paths
+above match this mount. Keytabs must be owned by container UID 33 with mode 0600;
+the profile/config must satisfy the regular-file ownership rules above. Keep
+DNS/KDC reachability and clock synchronization working inside the worker.
+
+Only the public profile-map file is mounted into the web application. The worker
+receives the private configuration directory; the default Compose receives
+neither this mount nor the Kerberos enable flag. The UI never accepts a keytab,
+keytab path, realm password or arbitrary SPN from an HTTP request. To disable the
+capability, remove the optional overlay/flag and restart the isolated workers;
+existing session authorization then fails closed. This document does not
+authorize changing a Production deployment.

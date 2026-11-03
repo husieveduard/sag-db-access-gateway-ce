@@ -16,10 +16,17 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--ad-image', required=True)
     parser.add_argument('--probe', type=Path, required=True)
+    parser.add_argument('--managed-tests', type=Path, help='static Go managed Windows acceptance test binary')
+    parser.add_argument('--managed-broker', type=Path, help='native MSSQL broker for managed acceptance')
+    parser.add_argument('--php-image', default='php:8.3-cli-alpine')
     parser.add_argument('--kdc-only', action='store_true', help='test real AD service tickets without SQL Server')
     args = parser.parse_args()
     if not args.probe.is_file():
         parser.error('build the static native Kerberos probe first')
+    if bool(args.managed_tests) != bool(args.managed_broker) or (args.managed_tests and args.kdc_only):
+        parser.error('managed acceptance requires both binaries and the full SQL lab')
+    if args.managed_tests and (not args.managed_tests.is_file() or not args.managed_broker.is_file()):
+        parser.error('build the managed acceptance binaries first')
     work = Path(tempfile.mkdtemp(prefix='sag-kerberos-'))
     prefix = 'sag-kerberos-' + secrets.token_hex(4)
     network, dc, sql = prefix + '-net', prefix + '-dc', prefix + '-sql'
@@ -148,6 +155,28 @@ def main():
             denied('kerberos-material', [], payload=json.dumps(invalid).encode())
             denied('kerberos-material', ['--ca=/run/wrong.crt'], payload=material)
             denied('kerberos', ['--ca=/run/wrong.crt'])
+        if args.managed_tests:
+            print('Verifying temporary SAG login, Laravel runtime lifecycle, IPC and AD SQL', flush=True)
+            repository = Path(__file__).resolve().parents[1]
+            managed = run(['docker', 'run', '--rm', '--name', client_container, '--user', '33:33',
+                           '--network', network, '--dns', dc_ip, '--dns-search', 'sag.test',
+                           '-v', str(repository) + ':/src:ro', '-w', '/src/db-gateway',
+                           '-v', str(args.managed_tests.resolve()) + ':/run/managed-tests:ro',
+                           '-v', str(args.managed_broker.resolve()) + ':/run/sag-mssql-broker:ro',
+                           '-v', str(work / 'gateway.keytab') + ':/run/gateway.keytab:ro',
+                           '-v', str(work / 'krb5.conf') + ':/run/krb5.conf:ro',
+                           '-v', str(work / 'server.crt') + ':/run/ca.crt:ro',
+                           '-e', 'SAG_E2E_MSSQL_KERBEROS=1',
+                           '-e', 'SAG_E2E_MSSQL_BROKER_BINARY=/run/sag-mssql-broker',
+                           '-e', 'SAG_E2E_MSSQL_CA=/run/ca.crt',
+                           '--entrypoint', '/run/managed-tests', '-i', args.php_image,
+                           '-test.v', '-test.run=^TestMSSQLKerberosManagedSQL$', '-test.timeout=8m'],
+                          json.dumps({'sa_password': passwords['sa_password']}).encode(), timeout=520)
+            output = managed.stdout.decode(errors='replace')
+            if '--- PASS: TestMSSQLKerberosManagedSQL ' not in output or '--- SKIP:' in output:
+                raise RuntimeError('managed Windows SQL acceptance did not execute')
+            print(output, flush=True)
+            print('Managed Windows SQL: principal, replay denial, active revoke/expiry and zero backend sessions passed', flush=True)
         run(['docker', 'stop', dc])
         denied('ticket', [])
         denied('ticket-material', [], payload=material)

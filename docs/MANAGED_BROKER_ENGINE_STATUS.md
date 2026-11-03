@@ -18,20 +18,22 @@ must still use those checks throughout the SQL session.
 MySQL/MariaDB now use their own native adapter and isolated MySQL 8.4/MariaDB
 11.4 SQL tests; see [MySQL/MariaDB lab details](MYSQL_MARIADB_VAULT_SQL_E2E.md).
 MSSQL now has a separate native TDS laboratory adapter and isolated SQL Server
-2022 CI suite; see [MSSQL lab details](MSSQL_VAULT_SQL_E2E.md). Its limited protocol
-surface does not enable Integrated Authentication or production managed mode.
-An explicit Windows backend selection is stored and shown but application
-launch remains blocked. Its native Kerberos adapter now passes real isolated
+2022 CI suite; see [MSSQL lab details](MSSQL_VAULT_SQL_E2E.md). SQL authentication and Kerberos use separate backend strategies. Production
+managed mode remains disabled by default.
+An explicit Windows backend selection and configured profile alias are stored
+and shown. Windows managed launch requires both the runtime and Kerberos flags.
+Its native Kerberos adapter passes real isolated
 Samba AD/SQL Server principal and SELECT 1 acceptance, including in-memory
 keytab input without client file mounts. Typed one-time Laravel FD 3/Unix IPC
-bootstrap and an explicit binary Kerberos strategy are implemented. Application
-lifecycle/UI profile wiring and full managed Windows SQL/revocation acceptance
-remain open; see [the Windows contract](mssql-integrated-authentication.md).
+bootstrap, the binary strategy and application lifecycle/UI wiring are
+implemented. CI includes the full managed Windows SQL/revocation acceptance;
+see [the Windows contract](mssql-integrated-authentication.md).
 
 The CE runtime image now packages the three native broker executables and the
 Unix IPC worker as separate binaries. CI checks their presence and executable
 permissions in the non-root application image. They are not started by the
-existing Production Compose; runtime wiring and release acceptance remain open.
+existing Production Compose; release acceptance remains required before a
+deployment is enabled.
 
 ## Explicit managed runtime path
 
@@ -67,8 +69,10 @@ flag. Set `SAG_CE_MANAGED_CERT_DIR` to an absolute private directory containing
 `mssql-ca.crt`; the frontend key must be readable by the container's UID 33.
 The certificate must match `SAG_CE_GATEWAY_PUBLIC_HOST`. The backend CA files
 must validate each target's hostname. The overlay is a staging candidate,
-not the default installation path; production activation awaits full release
-acceptance including Windows Integrated Authentication.
+not the default installation path; production activation awaits explicit
+deployment review and release acceptance.
+The separate `compose.kerberos-candidate.yaml` adds the opt-in Windows backend
+profile mount; it is never included by default.
 
 [Managed Compose acceptance](MANAGED_COMPOSE_ACCEPTANCE.md) exercises the
 packaged runtime and this overlay with MySQL, MariaDB and MSSQL in separate
@@ -82,7 +86,9 @@ an encrypted SQL credential in the Vault before launch. The session form issues
 a separate random temporary SAG login for managed resources. Its plaintext
 password appears only on the first authorized session detail response, with
 `Cache-Control: no-store`; only its hash persists in the credential table.
-Persistent sessions and Windows backend mode are rejected for this path.
+Persistent sessions are rejected. Windows backend resources require the
+explicit Kerberos flag and a matching runtime-owned profile; they never use the
+SQL credential Vault slot.
 
 ## PostgreSQL automatic laboratory launch
 

@@ -3,13 +3,17 @@
 return [
     'gateway_auth' => [
         'label' => 'Автентифікація Gateway',
-        'notice' => 'Managed-режим використовує окремий тимчасовий SAG login і перевірений TLS до БД. Перед запуском сесії збережіть SQL credential у Vault. Windows Integrated Authentication поки недоступна.',
+        'notice' => 'Managed-режим використовує окремий тимчасовий SAG login і перевірений TLS до БД. Для SQL authentication збережіть credential у Vault. Для Windows authentication виберіть службовий профіль, налаштований адміністратором.',
     ],
     'backend_auth' => [
+        'profile' => 'Службовий Kerberos-профіль',
+        'profile_choose' => 'Виберіть налаштований профіль',
+        'profile_notice' => 'Профіль має відповідати цьому SQL Server. SQL-клієнт використовує тимчасовий SAG login.',
+        'profile_invalid' => 'Виберіть увімкнений Kerberos-профіль для цього хоста й порту SQL Server.',
         'label' => 'Автентифікація на MSSQL-сервері',
         'sql' => 'SQL Server Authentication',
-        'windows' => 'Windows Integrated Authentication (службовий AD-акаунт; ще недоступна)',
-        'notice' => 'Визначає підключення Gateway до MSSQL-сервера. Інші СУБД використовують пароль. Windows-режим можна зберегти, але підключення буде заблоковано до реалізації та перевірки Kerberos-адаптера. Тимчасові SAG credentials є окремими.',
+        'windows' => 'Windows Integrated Authentication (службовий AD-акаунт)',
+        'notice' => 'Визначає підключення Gateway до MSSQL-сервера. Інші СУБД використовують пароль. Windows-режим потребує ввімкненого managed runtime і налаштованого службового Kerberos-профілю. Тимчасові SAG credentials є окремими.',
     ],
     'title' => 'Ресурси БД',
     'heading' => 'Ресурси баз даних',

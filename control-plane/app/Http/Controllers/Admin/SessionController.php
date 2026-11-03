@@ -10,6 +10,7 @@ use App\Models\DbAccessSession;
 use App\Models\DbConnection;
 use App\Models\DbQueryEvent;
 use App\Services\Credentials\TemporaryGatewayCredentials;
+use App\Services\Credentials\ManagedBackendAuthentication;
 use Closure;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
@@ -168,8 +169,8 @@ class SessionController extends Controller
                 if ($resource->auth_mode === 'managed') {
                     if (config('sag.db_gateway.managed_runtime.enabled') !== true
                         || $data['mode'] !== 'temporary'
-                        || ! $resource->usesPasswordBackendAuthentication()) {
-                        throw new DomainException('Managed resource requires an enabled temporary SQL-authentication runtime.');
+                        || ! app(ManagedBackendAuthentication::class)->supportsResource($resource)) {
+                        throw new DomainException('Managed resource requires an enabled temporary runtime and a configured backend authentication profile.');
                     }
                 } elseif ($dbUsername === '') {
                     throw new DomainException(__('messages.sessions.db_username_required'));
@@ -206,6 +207,7 @@ class SessionController extends Controller
                         : null,
                     'metadata' => [
                         'db' => [
+                            ...($resource->auth_mode === 'managed' ? app(ManagedBackendAuthentication::class)->bindingFor($resource) : []),
                             'engine' => $resource->engine,
                             'credential_storage' => 'none',
                             'created_via' => 'web_console',

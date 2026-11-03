@@ -4,6 +4,7 @@ use App\Models\DatabaseResource;
 use App\Models\DbAccessSession;
 use App\Models\User;
 use App\Services\Credentials\ResourceCredentialVault;
+use App\Services\Credentials\ManagedBackendAuthentication;
 use App\Services\Credentials\TemporaryGatewayCredentials;
 use App\Services\DbAccess\LabManagedBrokerLifecycleService;
 use App\Services\DbAccess\DbGatewayLifecycleService;
@@ -53,6 +54,10 @@ if ($input['action'] === 'setup') {
     app(ResourceCredentialVault::class)->replace(
         $resource->id, $input['backend_username'] ?? 'ipc_e2e_backend', $input['password'], $user->id
     );
+    if (($input['backend_auth_mode'] ?? null) === 'mssql_kerberos_service') {
+        $resource->update(['target_options' => ['backend_auth_mode' => 'mssql_kerberos_service', 'kerberos_profile' => 'isolated-ad']]);
+        $session->update(['metadata' => ['db' => app(ManagedBackendAuthentication::class)->bindingFor($resource)]]);
+    }
     $temporary = app(TemporaryGatewayCredentials::class)->issue($session);
     if (! ($input['managed'] ?? false)) {
         $session->update(['status' => 'starting', 'metadata' => ['db' => [

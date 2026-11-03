@@ -87,7 +87,13 @@ func TestMSSQLVaultSQL(t *testing.T) {
 		t.Run(scenario, func(t *testing.T) { tdsVaultScenario(t, "mssql", target, scenario) })
 	}
 }
-func tdsVaultScenario(t *testing.T, engine, target, scenario string) {
+func tdsVaultScenario(t *testing.T, engine, target, scenario string, integrated ...*tdsKerberosAcceptance) {
+	var kerberos *tdsKerberosAcceptance
+	adminPassword, backendUser := "Isolated_Mssql_Admin_Only_42!", "sag_e2e_backend"
+	if len(integrated) > 0 {
+		kerberos = integrated[0]
+		adminPassword, backendUser = kerberos.AdminPassword, "SAG\\gateway"
+	}
 	binary := os.Getenv("SAG_E2E_MSSQL_BROKER_BINARY")
 	if binary == "" {
 		t.Fatal("native MSSQL lab binary required")
@@ -99,7 +105,7 @@ func tdsVaultScenario(t *testing.T, engine, target, scenario string) {
 		t.Fatal("test backend CA unavailable")
 	}
 	backendTLS := &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12}
-	admin := tdsTestClient(t, target, "sa", "Isolated_Mssql_Admin_Only_42!", "master", backendTLS)
+	admin := tdsTestClient(t, target, "sa", adminPassword, "master", backendTLS)
 	defer func() { admin.Close() }()
 	ready := false
 	for i := 0; i < 120; i++ {
@@ -126,32 +132,46 @@ func tdsVaultScenario(t *testing.T, engine, target, scenario string) {
 	}
 	query(admin, "IF DB_ID('sag_mssql_e2e') IS NULL CREATE DATABASE sag_mssql_e2e")
 	admin.Close()
-	admin = tdsTestClient(t, target, "sa", "Isolated_Mssql_Admin_Only_42!", "sag_mssql_e2e", backendTLS)
+	admin = tdsTestClient(t, target, "sa", adminPassword, "sag_mssql_e2e", backendTLS)
 	secret := make([]byte, 32)
 	rand.Read(secret)
 	password := "SaG_42!" + hex.EncodeToString(secret)
-	query(admin, "CREATE LOGIN sag_e2e_backend WITH PASSWORD='"+password+"', CHECK_POLICY=OFF")
-	defer query(admin, "DROP LOGIN sag_e2e_backend")
-	query(admin, "CREATE USER sag_e2e_backend FOR LOGIN sag_e2e_backend")
-	defer query(admin, "DROP USER sag_e2e_backend")
+	if kerberos == nil {
+		query(admin, "CREATE LOGIN sag_e2e_backend WITH PASSWORD='"+password+"', CHECK_POLICY=OFF")
+		defer query(admin, "DROP LOGIN sag_e2e_backend")
+	}
+	query(admin, "CREATE USER ["+backendUser+"] FOR LOGIN ["+backendUser+"]")
+	defer query(admin, "DROP USER ["+backendUser+"]")
 	query(admin, "CREATE TABLE guard_probe(value INTEGER)")
 	defer query(admin, "DROP TABLE guard_probe")
-	query(admin, "GRANT SELECT,INSERT ON guard_probe TO sag_e2e_backend")
-	backendProbe, err := tdsBackendConnect(context.Background(), target, backendTLS, "sag_e2e_backend", password, "sag_mssql_e2e")
+	query(admin, "GRANT SELECT,INSERT ON guard_probe TO ["+backendUser+"]")
+	connectBackend := func(config *tls.Config) (net.Conn, error) {
+		if kerberos == nil {
+			return tdsBackendConnect(context.Background(), target, config, backendUser, password, "sag_mssql_e2e")
+		}
+		auth, err := tdsNewKerberosAuth(target, kerberos.Profile)
+		if err != nil {
+			return nil, errTDSProtocol
+		}
+		return tdsBackendConnectIntegrated(context.Background(), target, config, "sag_mssql_e2e", auth)
+	}
+	backendProbe, err := connectBackend(backendTLS)
 	if err != nil {
-		t.Fatalf("native backend authentication failed: %v", err)
+		t.Fatal("native backend authentication failed")
 	}
 	backendProbe.Close()
-	if conn, e := tdsBackendConnect(context.Background(), target, backendTLS, "sag_e2e_backend", "wrong-password", "sag_mssql_e2e"); e == nil {
-		conn.Close()
-		t.Fatal("wrong backend password accepted")
+	if kerberos == nil {
+		if conn, e := tdsBackendConnect(context.Background(), target, backendTLS, backendUser, "wrong-password", "sag_mssql_e2e"); e == nil {
+			conn.Close()
+			t.Fatal("wrong backend password accepted")
+		}
 	}
 	// An unrelated frontend CA must never authenticate the backend server.
 	cert := testBrokerCertificate(t)
 	wrongRoots := x509.NewCertPool()
 	parsed, _ := x509.ParseCertificate(cert.Certificate[0])
 	wrongRoots.AddCert(parsed)
-	if conn, e := tdsBackendConnect(context.Background(), target, &tls.Config{RootCAs: wrongRoots}, "sag_e2e_backend", password, "sag_mssql_e2e"); e == nil {
+	if conn, e := connectBackend(&tls.Config{RootCAs: wrongRoots}); e == nil {
 		conn.Close()
 		t.Fatal("untrusted backend TLS accepted")
 	}
@@ -165,6 +185,17 @@ func tdsVaultScenario(t *testing.T, engine, target, scenario string) {
 		php = "php"
 	}
 	env := append(os.Environ(), "APP_ENV=testing", "APP_DEBUG=false", "BCRYPT_ROUNDS=4", "APP_KEY=base64:"+base64.StdEncoding.EncodeToString(secret), "SAG_CE_CREDENTIAL_KEY=base64:"+base64.StdEncoding.EncodeToString(secret), "DB_CONNECTION=sqlite", "DB_DATABASE="+dbPath, "CACHE_STORE=array", "SESSION_DRIVER=array", "LOG_CHANNEL=stderr", "SAG_INTERNAL_TOKEN=mssql-internal-only", "HTTP_PROXY=http://127.0.0.1:1", "HTTPS_PROXY=http://127.0.0.1:1")
+	if kerberos != nil {
+		profilesPath := filepath.Join(dir, "kerberos-profiles.json")
+		profiles, _ := json.Marshal(map[string]any{"isolated-ad": map[string]string{
+			"username": kerberos.Profile.Username, "realm": kerberos.Profile.Realm, "spn": kerberos.Profile.SPN,
+			"config_file": kerberos.Profile.ConfigFile, "keytab_file": kerberos.Profile.KeytabFile, "target": target,
+		}})
+		if os.WriteFile(profilesPath, profiles, 0600) != nil {
+			t.Fatal("private profile fixture unavailable")
+		}
+		env = append(env, "SAG_MSSQL_KERBEROS_ENABLED=true", "SAG_MSSQL_KERBEROS_PROFILES_FILE="+profilesPath)
+	}
 	fixture := func(input map[string]any) []byte {
 		t.Helper()
 		data, _ := json.Marshal(input)
@@ -193,13 +224,18 @@ func tdsVaultScenario(t *testing.T, engine, target, scenario string) {
 			Password string `json:"password"`
 		} `json:"temporary"`
 	}
-	if json.Unmarshal(fixture(map[string]any{"action": "setup", "password": vaultPassword, "backend_username": "sag_e2e_backend", "managed": true, "engine": engine, "database": "sag_mssql_e2e", "tls_mode": "verify-full", "target_host": host, "target_port": portNumber}), &setup) != nil {
+	if json.Unmarshal(fixture(map[string]any{"action": "setup", "password": vaultPassword, "backend_username": "sag_e2e_backend", "managed": true, "engine": engine, "database": "sag_mssql_e2e", "tls_mode": "verify-full", "target_host": host, "target_port": portNumber, "backend_auth_mode": func() string {
+		if kerberos != nil {
+			return "mssql_kerberos_service"
+		}
+		return "mssql_sql_auth"
+	}()}), &setup) != nil {
 		t.Fatal("invalid fixture")
 	}
 	for _, entry := range env {
 		parts := strings.SplitN(entry, "=", 2)
 		switch parts[0] {
-		case "APP_ENV", "APP_DEBUG", "APP_KEY", "SAG_CE_CREDENTIAL_KEY", "DB_CONNECTION", "DB_DATABASE", "CACHE_STORE", "SESSION_DRIVER", "LOG_CHANNEL", "SAG_INTERNAL_TOKEN":
+		case "SAG_MSSQL_KERBEROS_ENABLED", "SAG_MSSQL_KERBEROS_PROFILES_FILE", "APP_ENV", "APP_DEBUG", "APP_KEY", "SAG_CE_CREDENTIAL_KEY", "DB_CONNECTION", "DB_DATABASE", "CACHE_STORE", "SESSION_DRIVER", "LOG_CHANNEL", "SAG_INTERNAL_TOKEN":
 			t.Setenv(parts[0], parts[1])
 		}
 	}
@@ -217,7 +253,7 @@ func tdsVaultScenario(t *testing.T, engine, target, scenario string) {
 	defer func() {
 		httpCmd.Process.Kill()
 		httpCmd.Wait()
-		if bytes.Contains(httpLog.Bytes(), []byte(password)) {
+		if bytes.Contains(httpLog.Bytes(), []byte(password)) || (kerberos != nil && kerberos.disclosed(httpLog.Bytes())) {
 			t.Error("HTTP disclosed backend password")
 		}
 	}()
@@ -277,11 +313,14 @@ func tdsVaultScenario(t *testing.T, engine, target, scenario string) {
 	_, frontPort, _ := net.SplitHostPort(frontAddress)
 	frontPortNumber, _ := strconv.Atoi(frontPort)
 	launcher := map[string]any{"binary": binary, "socket": socket, "cert": certPath, "key": keyPath, "worker_uid": os.Getuid(), "log_dir": filepath.Join(dir, "logs"), "control": "http://" + controlAddress, "port": frontPortNumber, "backend_ca": caPath}
+	if kerberos != nil {
+		launcher["runtime"] = true
+	}
 	defer func() {
-		logs, _ := filepath.Glob(filepath.Join(dir, "logs", "managed-lab", "*.log"))
+		logs, _ := filepath.Glob(filepath.Join(dir, "logs", "*", "*.log"))
 		for _, path := range logs {
 			body, _ := os.ReadFile(path)
-			if bytes.Contains(body, []byte(password)) || bytes.Contains(body, []byte(vaultPassword)) {
+			if bytes.Contains(body, []byte(password)) || bytes.Contains(body, []byte(vaultPassword)) || (kerberos != nil && kerberos.disclosed(body)) {
 				t.Error("broker log disclosed backend password")
 			}
 		}
@@ -314,7 +353,7 @@ func tdsVaultScenario(t *testing.T, engine, target, scenario string) {
 		}
 		stopped := false
 		for i := 0; i < 50; i++ {
-			rows := query(admin, "SELECT count(*) FROM sys.dm_exec_sessions WHERE login_name='sag_e2e_backend'")
+			rows := query(admin, "SELECT count(*) FROM sys.dm_exec_sessions WHERE login_name='"+backendUser+"'")
 			if len(rows) == 1 && rows[0][0] == "0" {
 				stopped = true
 				break
@@ -347,8 +386,16 @@ func tdsVaultScenario(t *testing.T, engine, target, scenario string) {
 		}
 	}
 	args, _ := os.ReadFile("/proc/" + strconv.Itoa(launch.PID) + "/cmdline")
-	if bytes.Contains(args, []byte(password)) {
+	if bytes.Contains(args, []byte(password)) || (kerberos != nil && (kerberos.disclosed(args) || kerberos.disclosed(processEnv))) {
 		t.Fatal("backend password leaked in argv")
+	}
+	if kerberos != nil {
+		if !bytes.Contains(args, []byte("--backend-auth=mssql_kerberos_service")) || bytes.Contains(args, []byte("--keytab")) {
+			t.Fatal("managed Kerberos strategy or memory-only boundary mismatch")
+		}
+		if _, e := pgIPCTakeKerberos(context.Background(), socket, "SAG-IPC-E2E", setup.Resource, uint32(os.Getuid())); e == nil {
+			t.Fatal("foreign process replayed Kerberos bootstrap")
+		}
 	}
 	if _, e := pgIPCTakeCredentials(context.Background(), socket, "SAG-IPC-E2E", setup.Resource, uint32(os.Getuid())); e == nil {
 		t.Fatal("unrelated process replayed bootstrap")
@@ -362,7 +409,7 @@ func tdsVaultScenario(t *testing.T, engine, target, scenario string) {
 				fixture(map[string]any{"action": "revoke"})
 			}
 		})
-		rows := query(admin, "SELECT count(*) FROM sys.dm_exec_sessions WHERE login_name='sag_e2e_backend'")
+		rows := query(admin, "SELECT count(*) FROM sys.dm_exec_sessions WHERE login_name='"+backendUser+"'")
 		if len(rows) != 1 || rows[0][0] != "0" {
 			t.Fatal("idle invalidation retained a backend connection")
 		}
@@ -389,6 +436,13 @@ func tdsVaultScenario(t *testing.T, engine, target, scenario string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	e = independent.QueryRowContext(ctx, "SELECT 1").Scan(&oneValue)
 	if e == nil {
+		if kerberos != nil {
+			var original, effective string
+			if independent.QueryRowContext(ctx, "SELECT ORIGINAL_LOGIN(), SUSER_SNAME()").Scan(&original, &effective) != nil || original != backendUser || effective != backendUser {
+				t.Fatal("temporary SAG client reached an unexpected AD backend identity")
+			}
+			t.Log("Temporary SAG login -> Laravel lifecycle -> Unix IPC -> Kerberos -> SAG\\gateway; SELECT 1 = 1")
+		}
 		// The large PLP payload is real SQL coverage, not a lifecycle
 		// prerequisite. Run it once instead of stressing the same disposable
 		// SQL Server twelve times while it is still completing startup work.
@@ -458,7 +512,7 @@ func tdsVaultScenario(t *testing.T, engine, target, scenario string) {
 		t.Fatal("unauthorized SQL was forwarded")
 	}
 	for i := 0; i < 50; i++ {
-		rows = query(admin, "SELECT count(*) FROM sys.dm_exec_sessions WHERE login_name='sag_e2e_backend'")
+		rows = query(admin, "SELECT count(*) FROM sys.dm_exec_sessions WHERE login_name='"+backendUser+"'")
 		if len(rows) == 1 && rows[0][0] == "0" {
 			if scenario != "unsupported_command" {
 				assertManagedBrokerExited(t, launch.PID, frontAddress)

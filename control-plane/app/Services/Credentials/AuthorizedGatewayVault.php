@@ -186,11 +186,7 @@ final class AuthorizedGatewayVault
 
     private function supportsBackend(DbAccessSession $session): bool
     {
-        if ($session->resource?->usesPasswordBackendAuthentication() === true) {
-            $pinned = data_get($session->metadata, 'db.backend_auth_mode');
-            return $pinned === null || $pinned === $session->resource->backendAuthMode();
-        }
-        return app(ManagedKerberosProfiles::class)->supportsSession($session);
+        return app(ManagedBackendAuthentication::class)->supportsSession($session);
     }
 
     /**

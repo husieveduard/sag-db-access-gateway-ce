@@ -7,6 +7,7 @@ use App\Models\AuditEvent;
 use App\Models\DatabaseResource;
 use App\Models\DatabaseResourceCredential;
 use App\Models\DbAccessSession;
+use App\Services\Credentials\ManagedKerberosProfiles;
 use Closure;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
@@ -14,6 +15,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class ResourceController extends Controller
@@ -51,6 +53,7 @@ class ResourceController extends Controller
     {
         return view('admin.resources.create', [
             'engines' => self::ENGINES,
+            'kerberosProfiles' => app(ManagedKerberosProfiles::class)->aliases(),
         ]);
     }
 
@@ -67,6 +70,7 @@ class ResourceController extends Controller
                     'created_via' => 'web_console',
                     'credential_storage' => 'none',
                     'backend_auth_mode' => $this->backendAuthMode($data),
+                    'kerberos_profile' => $this->kerberosProfile($data),
                 ],
                 'created_by_user_id' => $request->user()->id,
             ]);
@@ -142,6 +146,7 @@ class ResourceController extends Controller
         return view('admin.resources.edit', [
             'resource' => $resource,
             'engines' => self::ENGINES,
+            'kerberosProfiles' => app(ManagedKerberosProfiles::class)->aliases(),
             'vaultCredential' => auth()->user()->isSuperAdmin() && in_array($resource->engine, ['postgresql', 'mysql', 'mariadb', 'mssql'], true)
                 ? DatabaseResourceCredential::query()->where('resource_id', $resource->id)->first(['username', 'updated_at'])
                 : null,
@@ -180,7 +185,9 @@ class ResourceController extends Controller
                         !== (string) ($attributes[$field] ?? '')
                 );
                 $backendAuthMode = $this->backendAuthMode($data, $locked);
-                $targetChanged = $targetChanged || $backendAuthMode !== $locked->backendAuthMode();
+                $kerberosProfile = $this->kerberosProfile($data, $locked);
+                $targetChanged = $targetChanged || $backendAuthMode !== $locked->backendAuthMode()
+                    || $kerberosProfile !== data_get($locked->target_options, 'kerberos_profile');
 
                 $activeGatewaySessions = DbAccessSession::query()
                     ->where('resource_id', $locked->id)
@@ -199,7 +206,8 @@ class ResourceController extends Controller
                         is_array($locked->target_options)
                             ? $locked->target_options
                             : [],
-                        ['updated_via' => 'web_console', 'backend_auth_mode' => $backendAuthMode],
+                        ['updated_via' => 'web_console', 'backend_auth_mode' => $backendAuthMode,
+                            'kerberos_profile' => $kerberosProfile],
                     ),
                 ])->save();
 
@@ -369,7 +377,7 @@ class ResourceController extends Controller
             $nameRule->ignore($resource->id);
         }
 
-        return $request->validate([
+        $data = $request->validate([
             'name' => ['required', 'string', 'min:3', 'max:160', $nameRule],
             'description' => ['nullable', 'string', 'max:5000'],
             'engine' => ['required', Rule::in(array_keys(self::ENGINES))],
@@ -382,6 +390,8 @@ class ResourceController extends Controller
                     ? ['mssql_sql_auth', 'mssql_kerberos_service']
                     : ['stored_password', 'mssql_sql_auth']
             )],
+            'kerberos_profile' => ['nullable', 'string', 'max:64',
+                Rule::in(app(ManagedKerberosProfiles::class)->aliases())],
             'target_host' => [
                 'required',
                 'string',
@@ -416,6 +426,17 @@ class ResourceController extends Controller
             'target_port' => ['required', 'integer', 'between:1,65535'],
             'target_database' => ['nullable', 'string', 'max:128'],
         ]);
+        if (config('sag.db_gateway.kerberos.enabled') === true
+            && $this->backendAuthMode($data, $resource) === 'mssql_kerberos_service'
+            && ($data['auth_mode'] ?? $resource?->auth_mode) === 'managed') {
+            $candidate = new DatabaseResource([...$this->resourceAttributes($data, $resource),
+                'target_options' => ['backend_auth_mode' => 'mssql_kerberos_service',
+                    'kerberos_profile' => $this->kerberosProfile($data, $resource)]]);
+            if (! app(ManagedKerberosProfiles::class)->supportsResource($candidate)) {
+                throw ValidationException::withMessages(['kerberos_profile' => __('resources.backend_auth.profile_invalid')]);
+            }
+        }
+        return $data;
     }
 
     private function resourceAttributes(array $data, ?DatabaseResource $resource = null): array
@@ -454,6 +475,12 @@ class ResourceController extends Controller
             ? $resource->backendAuthMode() : 'mssql_sql_auth');
     }
 
+    private function kerberosProfile(array $data, ?DatabaseResource $resource = null): ?string
+    {
+        return $this->backendAuthMode($data, $resource) === 'mssql_kerberos_service'
+            ? ($data['kerberos_profile'] ?? data_get($resource?->target_options, 'kerberos_profile')) : null;
+    }
+
     private function snapshot(DatabaseResource $resource): array
     {
         return [
@@ -466,6 +493,7 @@ class ResourceController extends Controller
             'target_tls_mode' => $resource->target_tls_mode,
             'auth_mode' => $resource->auth_mode,
             'backend_auth_mode' => $resource->backendAuthMode(),
+            'kerberos_profile' => data_get($resource->target_options, 'kerberos_profile'),
             'query_audit_enabled' => (bool) $resource->query_audit_enabled,
             'is_active' => (bool) $resource->is_active,
         ];
