@@ -19,8 +19,9 @@ import (
 // pgIPCSessionAuthorize is supplied by a trusted server-side session store.
 // It must verify live status, resource ownership and expiry independently.
 type pgIPCCredential struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
+	Username string          `json:"username,omitempty"`
+	Password string          `json:"password,omitempty"`
+	Kerberos json.RawMessage `json:"kerberos,omitempty"`
 }
 type pgIPCCredentialProvider func(context.Context, string, int64) (pgIPCCredential, error)
 
@@ -28,6 +29,7 @@ type pgIPCSessionAuthorize func(context.Context, string, int64) bool
 
 type pgIPCPeerIdentityKey struct{}
 type pgIPCBootstrapConsumeKey struct{}
+type pgIPCKerberosBootstrapKey struct{}
 type pgIPCPeerIdentity struct {
 	PID        int32
 	StartTicks string
@@ -144,16 +146,19 @@ func pgIPCHandleAuthorization(ctx context.Context, conn net.Conn, trustedUID uin
 	if json.Unmarshal(frame, &request) != nil || len(request.SessionUID) == 0 || len(request.SessionUID) > 128 || request.ResourceID <= 0 {
 		return
 	}
-	if request.Operation != "" && request.Operation != "authorize" && request.Operation != "consume_bootstrap" && request.Operation != "bootstrap_credentials" {
+	if request.Operation != "" && request.Operation != "authorize" && request.Operation != "consume_bootstrap" && request.Operation != "bootstrap_credentials" && request.Operation != "bootstrap_kerberos" {
 		return
 	}
 	peerCtx := context.WithValue(ctx, pgIPCPeerIdentityKey{}, pgIPCPeerIdentity{PID: peerPID, StartTicks: peerTicks})
 	if request.Operation == "consume_bootstrap" {
 		peerCtx = context.WithValue(peerCtx, pgIPCBootstrapConsumeKey{}, true)
 	}
-	if request.Operation == "bootstrap_credentials" {
+	if request.Operation == "bootstrap_credentials" || request.Operation == "bootstrap_kerberos" {
 		if len(providers) != 1 || providers[0] == nil {
 			return
+		}
+		if request.Operation == "bootstrap_kerberos" {
+			peerCtx = context.WithValue(peerCtx, pgIPCKerberosBootstrapKey{}, true)
 		}
 		credential, e := providers[0](peerCtx, request.SessionUID, request.ResourceID)
 		if e != nil || ctx.Err() != nil {
@@ -165,6 +170,7 @@ func pgIPCHandleAuthorization(ctx context.Context, conn net.Conn, trustedUID uin
 			Credential pgIPCCredential `json:"credential"`
 		}{request.SessionUID, request.ResourceID, credential})
 		credential.Password = ""
+		credential.Kerberos = nil
 		return
 	}
 	allowed := ctx.Err() == nil && authorize(peerCtx, request.SessionUID, request.ResourceID)

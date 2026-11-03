@@ -26,6 +26,11 @@ return [
     ],
 
     'db_gateway' => [
+        // Default-off candidate capability; keytab contents never enter config/env.
+        'kerberos' => [
+            'enabled' => filter_var(env('SAG_MSSQL_KERBEROS_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+            'profiles_file' => env('SAG_MSSQL_KERBEROS_PROFILES_FILE', '/etc/sag/kerberos/profiles.json'),
+        ],
         // Explicit development/test opt-in. Production always refuses this path.
         'managed_lab' => [
             'enabled' => filter_var(env('SAG_LAB_MANAGED_BROKER_ENABLED', false), FILTER_VALIDATE_BOOLEAN),

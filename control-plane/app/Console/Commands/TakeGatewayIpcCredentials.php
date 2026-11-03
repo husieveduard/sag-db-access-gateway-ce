@@ -4,16 +4,17 @@ namespace App\Console\Commands;
 
 use App\Services\Credentials\AuthorizedGatewayVault;
 use App\Services\Credentials\ResourceCredentialVault;
+use App\Services\Credentials\ManagedKerberosProfiles;
 use Illuminate\Console\Command;
 use Throwable;
 
 final class TakeGatewayIpcCredentials extends Command
 {
-    protected $signature = 'sag:take-gateway-ipc-credentials {session_uid} {resource_id} {--peer-pid=} {--peer-start-ticks=}';
+    protected $signature = 'sag:take-gateway-ipc-credentials {session_uid} {resource_id} {--peer-pid=} {--peer-start-ticks=} {--kerberos}';
     protected $description = 'Private IPC worker bootstrap through inherited pipe FD 3';
     protected $hidden = true;
 
-    public function handle(AuthorizedGatewayVault $authorization, ResourceCredentialVault $vault): int
+    public function handle(AuthorizedGatewayVault $authorization, ResourceCredentialVault $vault, ManagedKerberosProfiles $profiles): int
     {
         // Refuse a terminal, regular file, or absent descriptor before consuming
         // bootstrap. The trusted worker alone supplies the anonymous output pipe.
@@ -32,9 +33,11 @@ final class TakeGatewayIpcCredentials extends Command
                 || !ctype_digit($pid) || strlen($pid) > 10 || !ctype_digit($ticks) || strlen($ticks) > 24) {
                 return self::FAILURE;
             }
-            $credentials = $authorization->takeBootstrapCredentials($uid, (int) $resource, (int) $pid, $ticks, $vault);
+            $credentials = $this->option('kerberos')
+                ? $authorization->takeBootstrapKerberos($uid, (int) $resource, (int) $pid, $ticks, $profiles)
+                : $authorization->takeBootstrapCredentials($uid, (int) $resource, (int) $pid, $ticks, $vault);
             $frame = json_encode($credentials, JSON_THROW_ON_ERROR)."\n";
-            if (strlen($frame) > 8192 || fwrite($pipe, $frame) !== strlen($frame)) {
+            if (strlen($frame) > ($this->option('kerberos') ? 16384 : 8192) || fwrite($pipe, $frame) !== strlen($frame)) {
                 return self::FAILURE;
             }
             return self::SUCCESS;

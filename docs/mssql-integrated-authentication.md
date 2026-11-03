@@ -91,3 +91,46 @@ silently fall back from Kerberos to SQL authentication.
 
 No MSSQL Integrated Authentication option should be enabled in the GUI until these
 tests pass with a working TDS/Kerberos adapter.
+
+## Process-bound Kerberos material bootstrap
+
+The default-off `SAG_MSSQL_KERBEROS_ENABLED` capability permits a distinct
+`bootstrap_kerberos` Unix operation. This does not yet enable Windows session
+launch in the application. The request carries only the session/resource IDs;
+the Unix worker supplies the kernel peer PID/start ticks to the private Laravel
+command. Only its inherited FD 3 pipe may carry the response.
+
+A runtime-owned profile is selected by `target_options.kerberos_profile`, with
+its alias pinned in session metadata together with `mssql_kerberos_service`.
+The configured target and SPN must match the resource. Profile data comes from
+the trusted file referenced by `SAG_MSSQL_KERBEROS_PROFILES_FILE`, for example:
+
+```json
+{
+  "service-a": {
+    "target": "sql.sag.test:1433",
+    "spn": "MSSQLSvc/sql.sag.test:1433",
+    "username": "gateway",
+    "realm": "SAG.TEST",
+    "config_file": "/etc/sag/kerberos/krb5.conf",
+    "keytab_file": "/etc/sag/kerberos/gateway.keytab"
+  }
+}
+```
+
+The profile/config files must be regular, owned by root or the worker UID, and
+not writable by group or others. Keytabs must be regular files owned by the
+worker UID with no group/other access; symlinks are rejected. Configuration and
+keytab inputs are each limited to 4096 bytes. Profile files contain references,
+not AD passwords or key material.
+
+The grant revalidates active resource, expiry, process identity, pinned
+authentication mode/profile and unused bootstrap under a session row lock. It
+returns only a typed Kerberos envelope through FD 3 and Unix IPC. The response
+contains base64-encoded config/keytab bytes in server memory, never a SQL
+password or keytab path. SQL and Kerberos receivers reject cross-type or mixed
+responses. Windows sessions cannot retrieve a stale SQL Vault credential.
+
+Managed broker strategy selection, alias selection in the resource form and
+the full temporary-SAG-client Kerberos SQL/revocation acceptance remain release
+gates. The application's existing Windows launch block stays in place.

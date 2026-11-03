@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"encoding/base64"
 	"errors"
 	"io"
 	"os"
@@ -90,8 +91,16 @@ func pgIPCLaravelCredentials(phpBinary, artisanPath string) pgIPCCredentialProvi
 		}
 		defer reader.Close()
 		defer writer.Close()
-		cmd := exec.CommandContext(checkCtx, phpBinary, artisanPath, "sag:take-gateway-ipc-credentials", sessionUID, strconv.FormatInt(resourceID, 10),
-			"--peer-pid="+strconv.FormatInt(int64(peer.PID), 10), "--peer-start-ticks="+peer.StartTicks, "--no-ansi", "--no-interaction")
+
+		args := []string{artisanPath, "sag:take-gateway-ipc-credentials", sessionUID, strconv.FormatInt(resourceID, 10),
+			"--peer-pid="+strconv.FormatInt(int64(peer.PID), 10), "--peer-start-ticks="+peer.StartTicks, "--no-ansi", "--no-interaction"}
+		kerberos, _ := ctx.Value(pgIPCKerberosBootstrapKey{}).(bool)
+		limit := int64(8192)
+		if kerberos {
+			args = append(args, "--kerberos")
+			limit = 16384
+		}
+		cmd := exec.CommandContext(checkCtx, phpBinary, args...)
 		cmd.ExtraFiles = []*os.File{writer}
 		cmd.WaitDelay = 250 * time.Millisecond
 		if cmd.Start() != nil {
@@ -107,10 +116,28 @@ func pgIPCLaravelCredentials(phpBinary, artisanPath string) pgIPCCredentialProvi
 			case <-done:
 			}
 		}()
-		body, readErr := io.ReadAll(io.LimitReader(reader, 8193))
+		body, readErr := io.ReadAll(io.LimitReader(reader, limit+1))
 		close(done)
 		waitErr := cmd.Wait()
-		if readErr != nil || waitErr != nil || checkCtx.Err() != nil || len(body) > 8192 || json.Unmarshal(body, &credential) != nil || credential.Username == "" || credential.Password == "" {
+		if readErr != nil || waitErr != nil || checkCtx.Err() != nil || int64(len(body)) > limit {
+			return pgIPCCredential{}, errIPCLocalWorkerRequired
+		}
+		if kerberos {
+			var material map[string]string
+			if len(body) > 12001 || json.Unmarshal(body, &material) != nil || len(material) != 7 ||
+				material["kind"] != "kerberos_keytab" || material["profile_id"] == "" ||
+				material["username"] == "" || material["realm"] == "" || material["spn"] == "" {
+				return pgIPCCredential{}, errIPCLocalWorkerRequired
+			}
+			for _, field := range []string{"config_b64", "keytab_b64"} {
+				decoded, err := base64.StdEncoding.Strict().DecodeString(material[field])
+				if err != nil || len(decoded) == 0 || len(decoded) > 4096 {
+					return pgIPCCredential{}, errIPCLocalWorkerRequired
+				}
+			}
+			return pgIPCCredential{Kerberos: json.RawMessage(body)}, nil
+		}
+		if json.Unmarshal(body, &credential) != nil || credential.Username == "" || credential.Password == "" || len(credential.Kerberos) != 0 {
 			return pgIPCCredential{}, errIPCLocalWorkerRequired
 		}
 		return credential, nil

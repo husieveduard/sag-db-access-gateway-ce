@@ -27,7 +27,7 @@ final class AuthorizedGatewayVault
             && $session->expires_at !== null
             && $session->expires_at->isFuture()
             && $session->resource?->is_active === true
-            && $session->resource->usesPasswordBackendAuthentication();
+            && $this->supportsBackend($session);
     }
 
     /** Live non-secret gate, still bound to the originally bootstrapped process. */
@@ -44,7 +44,7 @@ final class AuthorizedGatewayVault
             && $session->mode === 'temporary' && $session->status === 'started'
             && $session->expires_at !== null && $session->expires_at->isFuture()
             && $session->resource?->is_active === true
-            && $session->resource->usesPasswordBackendAuthentication()
+            && $this->supportsBackend($session)
             && data_get($session->metadata, 'db.bootstrap_consumed_at') !== null
             && (int) data_get($session->metadata, 'db.gateway_pid', 0) === $peerPid
             && is_string($ticks = data_get($session->metadata, 'db.gateway_proc_start_ticks'))
@@ -77,7 +77,7 @@ final class AuthorizedGatewayVault
             || $session->status !== 'starting'
             || $session->expires_at === null || ! $session->expires_at->isFuture()
             || $session->resource?->is_active !== true
-            || ! $session->resource->usesPasswordBackendAuthentication()) {
+            || ! $this->supportsBackend($session)) {
             return false;
         }
 
@@ -139,6 +139,7 @@ final class AuthorizedGatewayVault
                 ->lockForUpdate()->first();
 
             if ($session === null
+                || ! $session->resource?->usesPasswordBackendAuthentication()
                 || data_get($session->metadata, 'db.bootstrap_consumed_at') !== null
                 || ! $this->isStartingSessionBoundToProcess(
                     $sessionUid, $resourceId, $peerPid, $peerStartTicks
@@ -160,6 +161,33 @@ final class AuthorizedGatewayVault
 
             return $credentials;
         }, 3);
+    }
+
+    /** Separate typed grant; Windows sessions never use SQL Vault retrieval. */
+    public function takeBootstrapKerberos(
+        string $sessionUid, int $resourceId, int $peerPid, string $peerStartTicks,
+        ManagedKerberosProfiles $profiles,
+    ): array {
+        return DB::transaction(function () use ($sessionUid, $resourceId, $peerPid, $peerStartTicks, $profiles): array {
+            $session = DbAccessSession::query()->with('resource')->where('public_id', $sessionUid)
+                ->where('resource_id', $resourceId)->lockForUpdate()->first();
+            if ($session === null || ! $profiles->supportsSession($session)
+                || data_get($session->metadata, 'db.bootstrap_consumed_at') !== null
+                || ! $this->isStartingSessionBoundToProcess($sessionUid, $resourceId, $peerPid, $peerStartTicks)) {
+                throw new DomainException('Gateway Kerberos bootstrap is not authorized.');
+            }
+            $material = $profiles->materialFor($session->resource);
+            $metadata = $session->metadata;
+            $metadata['db']['bootstrap_consumed_at'] = now()->toIso8601String();
+            $session->forceFill(['metadata' => $metadata])->save();
+            return $material;
+        }, 3);
+    }
+
+    private function supportsBackend(DbAccessSession $session): bool
+    {
+        return $session->resource?->usesPasswordBackendAuthentication() === true
+            || app(ManagedKerberosProfiles::class)->supportsSession($session);
     }
 
     /**
