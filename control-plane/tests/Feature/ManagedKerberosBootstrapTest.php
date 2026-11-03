@@ -45,7 +45,7 @@ final class ManagedKerberosBootstrapTest extends TestCase
         parent::tearDown();
     }
 
-    private function session(): DbAccessSession
+    private function makeKerberosSession(): DbAccessSession
     {
         $user = User::factory()->create();
         $resource = DatabaseResource::query()->create([
@@ -74,7 +74,7 @@ final class ManagedKerberosBootstrapTest extends TestCase
 
     public function test_typed_grant_is_one_time_and_contains_no_sql_password(): void
     {
-        $session = $this->session();
+        $session = $this->makeKerberosSession();
         $material = $this->take($session);
         $this->assertSame('kerberos_keytab', $material['kind']);
         $this->assertSame('service-a', $material['profile_id']);
@@ -88,7 +88,7 @@ final class ManagedKerberosBootstrapTest extends TestCase
 
     public function test_wrong_process_identity_cannot_consume_or_read_material(): void
     {
-        $session = $this->session();
+        $session = $this->makeKerberosSession();
         foreach ([[12346, '987654321'], [12345, '987654322']] as [$pid, $ticks]) {
             try {
                 $this->take($session, $pid, $ticks);
@@ -102,7 +102,7 @@ final class ManagedKerberosBootstrapTest extends TestCase
 
     public function test_sql_password_grant_never_falls_back_for_windows_session(): void
     {
-        $session = $this->session();
+        $session = $this->makeKerberosSession();
         try {
             app(AuthorizedGatewayVault::class)->takeBootstrapCredentials($session->public_id,
                 $session->resource_id, 12345, '987654321', app(ResourceCredentialVault::class));
@@ -115,7 +115,7 @@ final class ManagedKerberosBootstrapTest extends TestCase
 
     public function test_kerberos_grant_denies_sql_sessions_without_consuming_bootstrap(): void
     {
-        $session = $this->session();
+        $session = $this->makeKerberosSession();
         $session->resource->update(['target_options' => ['backend_auth_mode' => 'mssql_sql_auth']]);
         try {
             $this->take($session);
@@ -130,7 +130,7 @@ final class ManagedKerberosBootstrapTest extends TestCase
 
     public function test_live_gate_revalidates_revoke_profile_target_and_feature_flag(): void
     {
-        $session = $this->session();
+        $session = $this->makeKerberosSession();
         $this->take($session);
         $session->update(['status' => 'started']);
         $gate = app(AuthorizedGatewayVault::class);
@@ -152,7 +152,7 @@ final class ManagedKerberosBootstrapTest extends TestCase
 
     public function test_shared_or_symlinked_keytab_and_wrong_spn_fail_before_consumption(): void
     {
-        $session = $this->session();
+        $session = $this->makeKerberosSession();
         chmod($this->directory.'/gateway.keytab', 0644);
         try {
             $this->take($session);
@@ -178,7 +178,7 @@ final class ManagedKerberosBootstrapTest extends TestCase
     public function test_invalid_session_or_changed_profile_cannot_bootstrap(): void
     {
         foreach (['expired', 'inactive', 'revoked', 'persistent', 'wrong_profile'] as $case) {
-            $session = $this->session();
+            $session = $this->makeKerberosSession();
             if ($case === 'expired') {
                 $session->update(['expires_at' => now()->subMinute()]);
             } elseif ($case === 'inactive') {
@@ -203,7 +203,7 @@ final class ManagedKerberosBootstrapTest extends TestCase
 
     public function test_profiles_file_uses_aliases_without_returning_paths_or_sql_passwords(): void
     {
-        $session = $this->session();
+        $session = $this->makeKerberosSession();
         $path = $this->directory.'/profiles.json';
         file_put_contents($path, json_encode(config('sag.db_gateway.kerberos.profiles')));
         chmod($path, 0644);
