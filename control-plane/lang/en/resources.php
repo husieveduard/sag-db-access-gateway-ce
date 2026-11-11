@@ -1,6 +1,20 @@
 <?php
 
 return [
+    'gateway_auth' => [
+        'label' => 'Gateway authentication',
+        'notice' => 'Managed mode uses a separate temporary SAG login and verified TLS to the database. For SQL authentication, store the backend credential in the Vault. For Windows authentication, select an administrator-configured service profile.',
+    ],
+    'backend_auth' => [
+        'profile' => 'Kerberos service profile',
+        'profile_choose' => 'Select a configured profile',
+        'profile_notice' => 'The profile must match this SQL Server. Your SQL client still uses the temporary SAG login.',
+        'profile_invalid' => 'Select an enabled Kerberos profile configured for this SQL Server host and port.',
+        'label' => 'MSSQL server authentication',
+        'sql' => 'SQL Server Authentication',
+        'windows' => 'Windows Integrated Authentication (AD service account)',
+        'notice' => 'Applies to MSSQL gateway-to-server connections. Other engines use password authentication. Windows mode requires an enabled managed runtime and a configured Kerberos service profile. SAG temporary credentials are separate.',
+    ],
     'title' => 'Database resources',
     'heading' => 'Database Resources',
     'subtitle' => 'Target databases available for creating gateway sessions.',
@@ -172,4 +186,13 @@ return [
             ],
         ],
     ],
-];
+    'credential_vault' => [
+        'configured' => 'Credentials configured. Password is hidden.',
+        'not_configured' => 'Credentials not configured yet.',
+        'heading' => 'PostgreSQL credentials',
+        'notice' => 'Superadmin only. Password is encrypted; real credentials are not disclosed to end users.',
+        'username' => 'Technical username',
+        'password' => 'New password',
+        'submit' => 'Save credentials',
+    ],
+]; 
