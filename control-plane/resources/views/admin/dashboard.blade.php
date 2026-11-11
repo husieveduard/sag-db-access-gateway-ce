@@ -154,9 +154,9 @@
 
                         <td>
                             @if ($session->mode === 'temporary')
-                                {{ $session->expires_at?->format('d.m.Y H:i:s') ?? $notAvailable }}
+                                {{ app(\App\Services\Settings\DisplayClock::class)->format($session->expires_at) ?? $notAvailable }}
                             @else
-                                {{ $session->ended_at?->format('d.m.Y H:i:s')
+                                {{ app(\App\Services\Settings\DisplayClock::class)->format($session->ended_at)
                                     ?? __('dashboard.sessions.persistent_manual') }}
                             @endif
                         </td>
@@ -202,7 +202,7 @@
                     @endphp
 
                     <tr>
-                        <td>{{ $query->occurred_at?->format('d.m.Y H:i:s') ?? $notAvailable }}</td>
+                        <td>{{ app(\App\Services\Settings\DisplayClock::class)->format($query->occurred_at) ?? $notAvailable }}</td>
 
                         <td>
                             <strong>{{ $query->resource?->name ?? $notAvailable }}</strong><br>

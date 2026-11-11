@@ -5,6 +5,7 @@ x-app-environment: &app-environment
   APP_ENV: production
   APP_DEBUG: "false"
   APP_KEY: ${SAG_CE_APP_KEY}
+  SAG_CE_CREDENTIAL_KEY: ${SAG_CE_CREDENTIAL_KEY:-}
   APP_URL: ${SAG_CE_PUBLIC_URL}
   APP_LOCALE: uk
   APP_FALLBACK_LOCALE: uk

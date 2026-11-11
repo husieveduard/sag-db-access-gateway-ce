@@ -17,7 +17,7 @@
                         @if($item['unread'])<span class="ce-unread-dot" title="{{ __('notifications.unread') }}"></span>@endif
                     </div>
                     <p>{{ $item['detail'] }}</p>
-                    <small>{{ $item['occurred_at'] }}</small>
+                    <small>{{ app(\App\Services\Settings\DisplayClock::class)->format($item['occurred_at']) }}</small>
                 </div>
                 <div class="ce-notification-history-actions">
                     <a class="button" href="{{ $item['url'] }}">{{ __('notifications.open') }}</a>

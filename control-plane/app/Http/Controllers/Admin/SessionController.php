@@ -9,10 +9,13 @@ use App\Models\DbAccessOperation;
 use App\Models\DbAccessSession;
 use App\Models\DbConnection;
 use App\Models\DbQueryEvent;
+use App\Services\Credentials\TemporaryGatewayCredentials;
+use App\Services\Credentials\ManagedBackendAuthentication;
 use Closure;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -139,24 +142,18 @@ class SessionController extends Controller
                     }
                 },
             ],
-            'db_username' => ['required', 'string', 'max:128'],
+            'db_username' => ['nullable', 'string', 'max:128'],
         ]);
 
-        $dbUsername = trim((string) $data['db_username']);
-
-        if ($dbUsername === '') {
-            return back()
-                ->withInput()
-                ->withErrors([
-                    'db_username' => __('messages.sessions.db_username_required'),
-                ]);
-        }
+        $dbUsername = trim((string) ($data['db_username'] ?? ''));
+        $temporaryGatewayCredentials = null;
 
         try {
             $session = DB::transaction(function () use (
                 $request,
                 $data,
                 $dbUsername,
+                &$temporaryGatewayCredentials,
             ): DbAccessSession {
                 $resource = DatabaseResource::query()
                     ->whereKey($data['resource_id'])
@@ -168,6 +165,15 @@ class SessionController extends Controller
                     throw new DomainException(
                         __('messages.sessions.resource_unavailable')
                     );
+                }
+                if ($resource->auth_mode === 'managed') {
+                    if (config('sag.db_gateway.managed_runtime.enabled') !== true
+                        || $data['mode'] !== 'temporary'
+                        || ! app(ManagedBackendAuthentication::class)->supportsResource($resource)) {
+                        throw new DomainException('Managed resource requires an enabled temporary runtime and a configured backend authentication profile.');
+                    }
+                } elseif ($dbUsername === '') {
+                    throw new DomainException(__('messages.sessions.db_username_required'));
                 }
 
                 do {
@@ -201,12 +207,17 @@ class SessionController extends Controller
                         : null,
                     'metadata' => [
                         'db' => [
+                            ...($resource->auth_mode === 'managed' ? app(ManagedBackendAuthentication::class)->bindingFor($resource) : []),
                             'engine' => $resource->engine,
                             'credential_storage' => 'none',
                             'created_via' => 'web_console',
                         ],
                     ],
                 ]);
+                if ($resource->auth_mode === 'managed') {
+                    $temporaryGatewayCredentials = app(TemporaryGatewayCredentials::class)->issue($session);
+                    $session->forceFill(['target_db_username' => $temporaryGatewayCredentials['username']])->save();
+                }
 
                 AuditEvent::query()->create([
                     'actor_user_id' => $request->user()->id,
@@ -226,7 +237,7 @@ class SessionController extends Controller
                         'ttl_seconds' => $ttlSeconds,
                         'allowed_source_cidr' => $session->allowed_source_cidr,
                         'db_engine' => $resource->engine,
-                        'db_username' => $dbUsername,
+                        'db_username' => $session->target_db_username,
                         'credential_storage' => 'none',
                         'source' => 'web_console',
                     ],
@@ -243,15 +254,24 @@ class SessionController extends Controller
                 ]);
         }
 
-        return redirect()
+        $redirect = redirect()
             ->route('admin.sessions.show', $session)
             ->with(
                 'success',
                 __('messages.sessions.created', ['public_id' => $session->public_id])
             );
+        if ($temporaryGatewayCredentials !== null) {
+            $redirect->with('managed_temporary_credentials', [
+                'session_uid' => $session->public_id,
+                'username' => $temporaryGatewayCredentials['username'],
+                'password' => $temporaryGatewayCredentials['password'],
+            ]);
+        }
+
+        return $redirect;
     }
 
-    public function show(DbAccessSession $session): View
+    public function show(DbAccessSession $session): Response
     {
         abort_unless(auth()->user()->isSuperAdmin() || (int) $session->owner_user_id === (int) auth()->id(), 404);
         $session->load([
@@ -335,7 +355,7 @@ class SessionController extends Controller
             ->limit(100)
             ->get();
 
-        return view('admin.sessions.show', [
+        return response()->view('admin.sessions.show', [
             'session' => $session,
             'connections' => $connections,
             'queries' => $queries,
@@ -343,7 +363,9 @@ class SessionController extends Controller
             'riskSummary' => $riskSummary,
             'operations' => $operations,
             'auditEvents' => $auditEvents,
-        ]);
+        ])->header('Cache-Control', 'private, no-store, max-age=0')
+            ->header('Pragma', 'no-cache')
+            ->header('Referrer-Policy', 'no-referrer');
     }
 
     private function isValidIpOrCidr(string $value): bool

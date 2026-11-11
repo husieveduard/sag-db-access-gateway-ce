@@ -43,7 +43,7 @@
 
     <section class="card alert-health-processor" aria-label="Стан обробника">
         <span class="alert-health-processor-label">Останнє оновлення обробника</span>
-        <strong>{{ $lastRun ?? 'Ще не запускався' }}</strong>
+        <strong>{{ $lastRun ? app(\App\Services\Settings\DisplayClock::class)->format($lastRun) : 'Ще не запускався' }}</strong>
     </section>
 
     <section class="card alert-health-channels" aria-labelledby="alert-channels-heading">

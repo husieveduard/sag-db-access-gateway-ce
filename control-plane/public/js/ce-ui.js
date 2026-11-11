@@ -47,6 +47,13 @@
         const all = document.getElementById('ce-notification-read-all');
         const labels = document.getElementById('ce-notification-labels').dataset;
         const csrf = document.querySelector('meta[name="csrf-token"]').content;
+        const displayZone = document.querySelector('meta[name="ce-display-timezone"]')?.content || 'UTC';
+        const language = document.documentElement.lang === 'uk' ? 'uk-UA' : 'en-GB';
+        const timestampFormat = new Intl.DateTimeFormat(language, {
+            timeZone: displayZone, day: '2-digit', month: '2-digit',
+            year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit',
+            hourCycle: 'h23'
+        });
         let pending = false;
 
         const createNode = (tag, cls, text) => {
@@ -83,7 +90,7 @@
                 if (item.unread) head.append(createNode('span', 'ce-unread-dot'));
                 head.append(createNode('strong', '', item.title));
                 section.append(head, createNode('p', '', item.detail));
-                const when = createNode('time', '', new Date(item.occurred_at).toLocaleString());
+                const when = createNode('time', '', timestampFormat.format(new Date(item.occurred_at)));
                 section.append(when);
                 const actions = createNode('div', 'ce-notification-item-actions');
                 const link = createNode('a', '', labels.open);
@@ -148,7 +155,33 @@
         window.setInterval(() => { if (!document.hidden) refresh(); }, 60000);
     }
 
+
+    function initAuditInspector() {
+        const dialog = document.getElementById('ce-audit-dialog');
+        if (!dialog) return;
+        const json = document.getElementById('ce-audit-json');
+        const title = document.getElementById('ce-audit-dialog-title');
+        const when = document.getElementById('ce-audit-dialog-time');
+        const copy = document.getElementById('ce-audit-copy');
+        document.querySelectorAll('[data-ce-audit-open]').forEach(button => {
+            button.addEventListener('click', () => {
+                const payload = document.getElementById(button.dataset.ceAuditOpen);
+                if (!payload) return;
+                title.textContent = button.dataset.ceAuditTitle || '';
+                when.textContent = button.dataset.ceAuditTime || '';
+                json.textContent = payload.content.textContent;
+                dialog.showModal();
+            });
+        });
+        copy.addEventListener('click', async () => {
+            const ok = await copyIdentifier(json.textContent);
+            copy.title = ok ? copy.dataset.labelCopied : copy.dataset.labelFailed;
+            copy.setAttribute('aria-label', copy.title);
+        });
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
+        initAuditInspector();
         initNotifications();
         const shell = document.querySelector('.ce-app-shell');
         const toggle = document.getElementById('ce-sidebar-toggle');

@@ -6,6 +6,7 @@ return [
     'rule' => 'Rule', 'event' => 'Event', 'resource' => 'Resource',
     'owner' => 'Owner', 'count' => 'Occurrences', 'severity' => 'Severity',
     'status' => 'Status', 'actions' => 'Actions', 'all' => 'All',
+    'total' => 'records', 'reset' => 'Reset',
     'filter' => 'Filter', 'save' => 'Save', 'updated' => 'Updated.',
     'enabled' => 'Enabled', 'disabled' => 'Disabled',
     'empty' => 'No alerts found.',
