@@ -76,12 +76,21 @@ class ResourceCredentialAccessTest extends TestCase
         ]);
         $this->assertStringNotContainsString($secret, AuditEvent::where('resource_id', $resource->id)->firstOrFail()->toJson());
 
+        $this->get(route('admin.resources.edit', $resource))
+            ->assertOk()->assertSee('value="backend_user"', false)
+            ->assertDontSee($secret);
+
         $this->post(route('admin.resources.credentials.update', $resource), [
-            'username' => 'backend_user',
+            'username' => 'backend_user_v2',
             'password' => 'second-secret',
         ])->assertRedirect();
         $this->assertSame(1, DatabaseResourceCredential::where('resource_id', $resource->id)->count());
         $this->assertSame('second-secret', app(ResourceCredentialVault::class)->retrieveForGateway($resource->id)['password']);
+        $this->assertSame('backend_user_v2', DatabaseResourceCredential::where('resource_id', $resource->id)->firstOrFail()->username);
+        $rotated = AuditEvent::where('resource_id', $resource->id)->where('event_type', 'access.db.credentials.rotated')->firstOrFail();
+        $this->assertTrue((bool) $rotated->event_data['username_changed']);
+        $this->assertTrue((bool) $rotated->event_data['password_rotated']);
+        $this->assertStringNotContainsString('second-secret', $rotated->toJson());
         $this->assertDatabaseHas('audit_events', ['resource_id' => $resource->id, 'event_type' => 'access.db.credentials.rotated']);
     }
 
@@ -97,14 +106,52 @@ class ResourceCredentialAccessTest extends TestCase
         $this->assertDatabaseCount('database_resource_credentials', 0);
     }
 
-    public function test_mysql_resource_is_not_enabled_yet(): void
+    public function test_mysql_resource_vault_is_enabled(): void
     {
         $admin = $this->signIn('superadmin');
         $resource = $this->resource($admin, 'mysql');
         $this->post(route('admin.resources.credentials.update', $resource), [
             'username' => 'test', 'password' => 'should-not-save',
-        ])->assertStatus(422);
-        $this->assertDatabaseCount('database_resource_credentials', 0);
+        ])->assertRedirect();
+        $this->assertDatabaseCount('database_resource_credentials', 1);
+    }
+
+    public function test_vault_credentials_are_isolated_across_mysql_mariadb_and_mssql(): void
+    {
+        $admin = $this->signIn('superadmin');
+        $vault = app(ResourceCredentialVault::class);
+        $resources = [];
+
+        foreach (['mysql', 'mariadb', 'mssql'] as $engine) {
+            $resource = $this->resource($admin, $engine);
+            $resources[$engine] = $resource;
+
+            $this->post(route('admin.resources.credentials.update', $resource), [
+                'username' => 'backend_'.$engine,
+                'password' => 'fixture-'.$engine,
+            ])->assertRedirect(route('admin.resources.edit', $resource));
+
+            $stored = DatabaseResourceCredential::query()
+                ->where('resource_id', $resource->id)->firstOrFail();
+
+            $this->assertNotSame('fixture-'.$engine, $stored->password_encrypted);
+            $this->assertSame('backend_'.$engine, $vault->retrieveForGateway($resource->id)['username']);
+            $this->assertSame('fixture-'.$engine, $vault->retrieveForGateway($resource->id)['password']);
+            $this->get(route('admin.resources.edit', $resource))
+                ->assertOk()->assertSee('vault_password')->assertDontSee('fixture-'.$engine);
+        }
+
+        $this->assertDatabaseCount('database_resource_credentials', 3);
+
+        $this->post(route('admin.resources.credentials.update', $resources['mysql']), [
+            'username' => 'backend_mysql',
+            'password' => 'rotated-mysql-fixture',
+        ])->assertRedirect();
+
+        $this->assertSame('rotated-mysql-fixture', $vault->retrieveForGateway($resources['mysql']->id)['password']);
+        $this->assertSame('fixture-mariadb', $vault->retrieveForGateway($resources['mariadb']->id)['password']);
+        $this->assertSame('fixture-mssql', $vault->retrieveForGateway($resources['mssql']->id)['password']);
+        $this->assertDatabaseCount('database_resource_credentials', 3);
     }
 
     public function test_password_validation_does_not_persist_empty_credentials(): void

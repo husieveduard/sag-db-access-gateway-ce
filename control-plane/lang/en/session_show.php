@@ -1,6 +1,12 @@
 <?php
 
 return [
+    'temporary_credentials' => [
+        'heading' => 'Temporary gateway credentials',
+        'notice' => 'Copy these now. The password is shown once and cannot be retrieved later.',
+        'username' => 'Username',
+        'password' => 'Password',
+    ],
     'title' => 'Session',
     'back' => '← Back to sessions',
     'pending_operation' => 'operation pending',
