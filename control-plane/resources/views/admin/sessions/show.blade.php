@@ -4,6 +4,17 @@
 
 @section('content')
 @php
+    $issuedCredentials = session('managed_temporary_credentials');
+@endphp
+@if (is_array($issuedCredentials) && ($issuedCredentials['session_uid'] ?? null) === $session->public_id)
+    <section class="card form-card">
+        <h2>{{ __('session_show.temporary_credentials.heading') }}</h2>
+        <p class="hint">{{ __('session_show.temporary_credentials.notice') }}</p>
+        <p>{{ __('session_show.temporary_credentials.username') }}: <code>{{ $issuedCredentials['username'] }}</code></p>
+        <p>{{ __('session_show.temporary_credentials.password') }}: <code>{{ $issuedCredentials['password'] }}</code></p>
+    </section>
+@endif
+@php
     $statusClass = match ($session->status) {
         'started' => 'green',
         'starting', 'created', 'stopping' => 'yellow',
@@ -175,7 +186,7 @@
     <div class="card summary-card">
         <div class="summary-label">{{ __('session_show.summary.ttl_expiry') }}</div>
         <div class="summary-value">
-            {{ $session->expires_at?->format('d.m.Y H:i:s')
+            {{ app(\App\Services\Settings\DisplayClock::class)->format($session->expires_at)
                 ?? __('session_show.summary.persistent_service') }}
         </div>
     </div>
@@ -184,10 +195,10 @@
         <div class="summary-label">{{ __('session_show.summary.lifecycle') }}</div>
         <div class="summary-value">
             {{ __('session_show.summary.started') }}:
-            {{ $session->started_at?->format('d.m.Y H:i:s') ?? $notAvailable }}<br>
+            {{ app(\App\Services\Settings\DisplayClock::class)->format($session->started_at) ?? $notAvailable }}<br>
 
             {{ __('session_show.summary.ended') }}:
-            {{ $session->ended_at?->format('d.m.Y H:i:s') ?? $notAvailable }}
+            {{ app(\App\Services\Settings\DisplayClock::class)->format($session->ended_at) ?? $notAvailable }}
         </div>
     </div>
 </section>
@@ -296,8 +307,8 @@
 
                         <td>{{ $operation->requestedBy?->name ?? __('session_show.common.system') }}</td>
                         <td>{{ $operation->reason ?? $notAvailable }}</td>
-                        <td>{{ $operation->requested_at?->format('d.m.Y H:i:s') ?? $notAvailable }}</td>
-                        <td>{{ $operation->completed_at?->format('d.m.Y H:i:s') ?? $notAvailable }}</td>
+                        <td>{{ app(\App\Services\Settings\DisplayClock::class)->format($operation->requested_at) ?? $notAvailable }}</td>
+                        <td>{{ app(\App\Services\Settings\DisplayClock::class)->format($operation->completed_at) ?? $notAvailable }}</td>
                         <td class="muted">{{ $operation->error_message ?? $notAvailable }}</td>
                     </tr>
                 @empty
@@ -341,8 +352,8 @@
                                     ?? $connection->status }}
                             </span>
                         </td>
-                        <td>{{ $connection->opened_at?->format('d.m.Y H:i:s') ?? $notAvailable }}</td>
-                        <td>{{ $connection->closed_at?->format('d.m.Y H:i:s') ?? $notAvailable }}</td>
+                        <td>{{ app(\App\Services\Settings\DisplayClock::class)->format($connection->opened_at) ?? $notAvailable }}</td>
+                        <td>{{ app(\App\Services\Settings\DisplayClock::class)->format($connection->closed_at) ?? $notAvailable }}</td>
                         <td>{{ $connection->close_reason ?? $notAvailable }}</td>
                     </tr>
                 @empty
@@ -466,7 +477,7 @@
                                 : $notAvailable }}
                         </td>
 
-                        <td>{{ $query->ended_at?->format('d.m.Y H:i:s') ?? $notAvailable }}</td>
+                        <td>{{ app(\App\Services\Settings\DisplayClock::class)->format($query->ended_at) ?? $notAvailable }}</td>
 
                         <td>
                             <code title="{{ $query->sql_text }}">
@@ -505,7 +516,7 @@
             <tbody>
                 @forelse ($auditEvents as $event)
                     <tr>
-                        <td>{{ $event->occurred_at?->format('d.m.Y H:i:s') ?? $notAvailable }}</td>
+                        <td>{{ app(\App\Services\Settings\DisplayClock::class)->format($event->occurred_at) ?? $notAvailable }}</td>
                         <td><code>{{ $event->event_type }}</code></td>
 
                         <td>

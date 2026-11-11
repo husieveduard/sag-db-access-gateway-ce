@@ -121,6 +121,11 @@
             @enderror
         </div>
 
+        @include('admin.resources.partials.backend-auth')
+        @if (config('sag.db_gateway.managed_runtime.enabled') === true || $resource->auth_mode === 'managed')
+            @include('admin.resources.partials.gateway-auth')
+        @endif
+
         <div class="full">
             <label for="target_database">
                 {{ __('resources.edit_page.database') }}
@@ -172,4 +177,31 @@
         </a>
     </div>
 </form>
+
+@if (auth()->user()->isSuperAdmin() && $resource->usesPasswordBackendAuthentication() && in_array($resource->engine, ['postgresql', 'mysql', 'mariadb', 'mssql'], true))
+<section class="card form-card">
+    <h2>{{ __('resources.credential_vault.heading') }}</h2>
+    <p class="hint">{{ __('resources.credential_vault.notice') }}</p>
+    <p class="hint">{{ $vaultCredential ? __('resources.credential_vault.configured') : __('resources.credential_vault.not_configured') }}</p>
+    <form method="POST" action="{{ route('admin.resources.credentials.update', $resource) }}" autocomplete="off">
+        @csrf
+        <div class="form-grid">
+            <div>
+                <label for="vault_username">{{ __('resources.credential_vault.username') }}</label>
+                <input id="vault_username" name="username" type="text" maxlength="128" required autocomplete="off" value="{{ old('username', $vaultCredential?->username ?? '') }}">
+                @error('username') <div class="field-error">{{ $message }}</div> @enderror
+            </div>
+            <div>
+                <label for="vault_password">{{ __('resources.credential_vault.password') }}</label>
+                <input id="vault_password" name="password" type="password" maxlength="4096" required autocomplete="new-password">
+                @error('password') <div class="field-error">{{ $message }}</div> @enderror
+            </div>
+        </div>
+        <div class="submit-row">
+            <button class="button primary" type="submit">{{ __('resources.credential_vault.submit') }}</button>
+        </div>
+    </form>
+</section>
+@endif
+
 @endsection
