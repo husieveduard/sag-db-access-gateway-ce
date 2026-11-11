@@ -110,7 +110,6 @@
                     maxlength="128"
                     value="{{ old('source_cidr') }}"
                     placeholder="10.10.10.1/32"
-                    required
                 >
 
                 <div class="hint">
@@ -137,6 +136,7 @@
 
                 <div class="hint">
                     {{ __('sessions.create_page.db_username_hint') }}
+                    {{ __('sessions.create_page.managed_username_hint') }}
                 </div>
 
                 @error('db_username')

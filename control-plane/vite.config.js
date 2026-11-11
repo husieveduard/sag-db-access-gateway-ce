@@ -8,7 +8,7 @@ export default defineConfig({
         laravel({
             input: ['resources/css/app.css', 'resources/js/app.js'],
             refresh: true,
-            fonts: [
+            fonts: process.env.SAG_SKIP_REMOTE_FONTS === 'true' ? [] : [
                 bunny('Instrument Sans', {
                     weights: [400, 500, 600],
                 }),

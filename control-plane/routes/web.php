@@ -146,6 +146,7 @@ Route::middleware(['auth', 'ce.admin', 'ce.mfa'])
         Route::get('/sessions', [SessionController::class, 'index'])
             ->name('sessions.index');
 
+
         Route::get('/sessions/{session}', [SessionController::class, 'show'])
             ->name('sessions.show');
 

@@ -10,7 +10,8 @@ use Throwable;
 class SagDbStartSession extends Command
 {
     protected $signature = 'sag:db-start-session
-        {session : DB session public_id or numeric database ID}';
+        {session : DB session public_id or numeric database ID}
+        {--managed-lab : Explicit isolated native broker laboratory launch}';
 
     protected $description = 'Start a per-session SAG DB Gateway process';
 
@@ -25,7 +26,9 @@ class SagDbStartSession extends Command
         }
 
         try {
-            $result = $lifecycle->start($session);
+            $launcher = $this->option('managed-lab')
+                ? app(\App\Services\DbAccess\LabManagedBrokerLifecycleService::class) : $lifecycle;
+            $result = $launcher->start($session);
 
             $this->info('DB Gateway started.');
             $this->line(json_encode(

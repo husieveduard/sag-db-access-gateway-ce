@@ -6,9 +6,10 @@ use App\Models\AuditEvent;
 use App\Models\DbAccessSession;
 use App\Models\DbConnection;
 use App\Models\DbQueryEvent;
+use App\Services\Credentials\ManagedBackendAuthentication;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use RuntimeException;
-use Throwable;
 
 class DbGatewayLifecycleService
 {
@@ -19,6 +20,27 @@ class DbGatewayLifecycleService
         $this->assertStartable($session);
 
         $resource = $session->resource;
+        if (! app(ManagedBackendAuthentication::class)->supportsSession($session)) {
+            throw new RuntimeException('Selected backend authentication adapter is not implemented; refusing SQL authentication fallback.');
+        }
+        if ($resource->auth_mode === 'managed' && $session->mode === 'temporary'
+            && config('sag.db_gateway.managed_runtime.enabled') === true) {
+            return app(ManagedBrokerLifecycleService::class)->start($session);
+        }
+        if ($resource->auth_mode === 'managed'
+            && $session->mode === 'temporary'
+            && app()->environment('local', 'testing')
+            && config('sag.db_gateway.managed_lab.enabled') === true) {
+            return app(LabManagedBrokerLifecycleService::class)->start($session);
+        }
+        // Managed authentication must never downgrade to client passthrough.
+        // Enable it only after the native temporary-credential broker is
+        // integrated for this engine and has passed end-to-end tests.
+        if ($resource->auth_mode !== 'client_passthrough') {
+            throw new RuntimeException(
+                'Managed DB authentication requires an implemented broker; refusing passthrough fallback.'
+            );
+        }
         $binary = trim((string) config('sag.db_gateway.binary'));
         $listenHost = trim((string) config('sag.db_gateway.listen_host', '0.0.0.0'));
         $publicHost = trim((string) config('sag.db_gateway.public_host', ''));
@@ -29,7 +51,7 @@ class DbGatewayLifecycleService
             '/'
         );
 
-        if ($binary === '' || !is_executable($binary)) {
+        if ($binary === '' || ! is_executable($binary)) {
             throw new RuntimeException("DB Gateway binary is not executable: {$binary}");
         }
 
@@ -45,7 +67,7 @@ class DbGatewayLifecycleService
             throw new RuntimeException('SAG_INTERNAL_TOKEN is not configured.');
         }
 
-        if (!is_dir($logDir) && !mkdir($logDir, 0750, true) && !is_dir($logDir)) {
+        if (! is_dir($logDir) && ! mkdir($logDir, 0750, true) && ! is_dir($logDir)) {
             throw new RuntimeException("Cannot create DB Gateway log directory: {$logDir}");
         }
 
@@ -65,6 +87,8 @@ class DbGatewayLifecycleService
             [
                 'engine' => $resource->engine,
                 'gateway_pid' => null,
+                'gateway_proc_start_ticks' => null,
+                'bootstrap_consumed_at' => null,
                 'gateway_log_path' => $logFile,
                 'gateway_started_at' => $now->toIso8601String(),
             ],
@@ -108,7 +132,7 @@ class DbGatewayLifecycleService
             '/bin/sh -c '.escapeshellarg($command)
         ));
 
-        if (!preg_match('/^\d+$/', $pidRaw)) {
+        if (! preg_match('/^\d+$/', $pidRaw)) {
             $this->markStartFailed($session, 'gateway_pid_not_returned');
 
             throw new RuntimeException('DB Gateway process PID was not returned.');
@@ -117,7 +141,7 @@ class DbGatewayLifecycleService
         $pid = (int) $pidRaw;
         usleep(300000);
 
-        if (!$this->isProcessRunning($pid)) {
+        if (! $this->isProcessRunning($pid)) {
             $this->markStartFailed($session, 'gateway_process_not_running');
 
             throw new RuntimeException(
@@ -177,6 +201,19 @@ class DbGatewayLifecycleService
         ?int $actorUserId = null,
         string $reason = 'manual_revoke',
     ): array {
+        $session = DB::transaction(function () use ($session, $actorUserId, $reason): DbAccessSession {
+            $locked = DbAccessSession::query()->whereKey($session->id)->lockForUpdate()->firstOrFail();
+            if (! in_array($locked->status, ['terminated', 'expired'], true)) {
+                $locked->forceFill([
+                    'status' => 'stopping',
+                    'termination_reason' => $reason,
+                    'terminated_by_user_id' => $actorUserId,
+                    'last_activity_at' => now(),
+                ])->save();
+            }
+            return $locked;
+        }, 3);
+
         if (in_array($session->status, ['terminated', 'expired'], true)) {
             return [
                 'already_terminal' => true,
@@ -184,18 +221,10 @@ class DbGatewayLifecycleService
             ];
         }
 
-        // Deny new gateway connections before signalling the process.
-        $session->forceFill([
-            'status' => 'stopping',
-            'termination_reason' => $reason,
-            'terminated_by_user_id' => $actorUserId,
-            'last_activity_at' => now(),
-        ])->save();
-
         $gateway = $this->stopGateway($session);
         $confirmed = $this->gatewayStopConfirmed($session, $gateway);
 
-        if (!$confirmed) {
+        if (! $confirmed) {
             $this->writeAudit(
                 $session, null, 'access.db.gateway.stop_failed', 'high',
                 ['reason' => $reason, 'gateway_state' => $gateway['state']],
@@ -254,7 +283,7 @@ class DbGatewayLifecycleService
         ])->save();
 
         $gateway = $this->stopGateway($session);
-        if (!$this->gatewayStopConfirmed($session, $gateway)) {
+        if (! $this->gatewayStopConfirmed($session, $gateway)) {
             $this->writeAudit(
                 $session, null, 'access.db.gateway.stop_failed', 'high',
                 ['reason' => 'session_expired', 'gateway_state' => $gateway['state']],
@@ -390,7 +419,7 @@ class DbGatewayLifecycleService
             ];
         }
 
-        if (!$this->isProcessRunning($pid)) {
+        if (! $this->isProcessRunning($pid)) {
             return [
                 'pid' => $pid,
                 'state' => 'gateway_not_running',
@@ -398,7 +427,7 @@ class DbGatewayLifecycleService
             ];
         }
 
-        if (!$this->isExpectedGatewayProcess($pid, $session)) {
+        if (! $this->isExpectedGatewayProcess($pid, $session)) {
             return [
                 'pid' => $pid,
                 'state' => 'gateway_pid_identity_mismatch',
@@ -410,7 +439,7 @@ class DbGatewayLifecycleService
         $stoppedAfterTerm = $this->waitForExit($pid, 30, 100000);
         $killSent = false;
 
-        if (!$stoppedAfterTerm && $this->isProcessRunning($pid)) {
+        if (! $stoppedAfterTerm && $this->isProcessRunning($pid)) {
             // Recheck identity before escalating: the original PID could have
             // exited and been reassigned while waiting for SIGTERM.
             if ($this->isExpectedGatewayProcess($pid, $session)) {
@@ -419,12 +448,12 @@ class DbGatewayLifecycleService
             }
         }
 
-        $stopped = !$this->isProcessRunning($pid);
+        $stopped = ! $this->isProcessRunning($pid);
 
         $state = match (true) {
             $stopped && $killSent => 'stopped_after_sigkill',
             $stopped => 'stopped_after_sigterm',
-            !$termSent && !$killSent => 'signal_not_sent',
+            ! $termSent && ! $killSent => 'signal_not_sent',
             default => 'stop_failed',
         };
 
@@ -450,7 +479,7 @@ class DbGatewayLifecycleService
         ];
     }
 
-    private function allocatePort(
+    protected function allocatePort(
         DbAccessSession $session,
         string $listenHost,
     ): int {
@@ -468,7 +497,7 @@ class DbGatewayLifecycleService
                 ->whereIn('status', ['created', 'starting', 'started'])
                 ->exists();
 
-            if (!$reserved && $this->portCanBind($listenHost, $port)) {
+            if (! $reserved && $this->portCanBind($listenHost, $port)) {
                 return $port;
             }
         }
@@ -476,21 +505,21 @@ class DbGatewayLifecycleService
         throw new RuntimeException('No free DB Gateway port is available.');
     }
 
-    private function assertStartable(DbAccessSession $session): void
+    protected function assertStartable(DbAccessSession $session): void
     {
-        if (!in_array($session->status, ['created', 'failed'], true)) {
+        if (! in_array($session->status, ['created', 'failed'], true)) {
             throw new RuntimeException(
                 "Session {$session->public_id} cannot be started from status {$session->status}."
             );
         }
 
-        if (!$session->resource || !$session->resource->is_active) {
+        if (! $session->resource || ! $session->resource->is_active) {
             throw new RuntimeException('Неможливо запустити gateway: DB resource неактивний або недоступний.');
         }
 
         if (
             $session->mode === 'temporary'
-            && !$session->expires_at
+            && ! $session->expires_at
         ) {
             throw new RuntimeException('Temporary DB session requires expires_at.');
         }
@@ -507,7 +536,7 @@ class DbGatewayLifecycleService
         }
     }
 
-    private function markStartFailed(
+    protected function markStartFailed(
         DbAccessSession $session,
         string $reason,
     ): void {
@@ -546,7 +575,7 @@ class DbGatewayLifecycleService
         return true;
     }
 
-    private function hostPort(string $host, int $port): string
+    protected function hostPort(string $host, int $port): string
     {
         $host = trim($host);
 
@@ -557,7 +586,7 @@ class DbGatewayLifecycleService
         return $host.':'.$port;
     }
 
-    private function isProcessRunning(int $pid): bool
+    protected function isProcessRunning(int $pid): bool
     {
         if ($pid <= 1) {
             return false;
@@ -565,22 +594,28 @@ class DbGatewayLifecycleService
 
         $statusPath = '/proc/'.$pid.'/status';
 
-        if (!is_readable($statusPath)) {
+        if (! is_readable($statusPath)) {
             return false;
         }
 
         $status = (string) file_get_contents($statusPath);
 
-        return !preg_match('/^State:\\s+Z/m', $status);
+        return ! preg_match('/^State:\\s+Z/m', $status);
     }
 
     /**
      * Reject recycled PIDs and unrelated processes even if their arguments
      * happen to mention sag-db-gateway. Linux /proc is required by CE worker.
      */
-    private function isExpectedGatewayProcess(int $pid, DbAccessSession $session): bool
+    protected function isExpectedGatewayProcess(int $pid, DbAccessSession $session): bool
     {
-        $binary = realpath((string) config('sag.db_gateway.binary', ''));
+        $scope = data_get($session->metadata, 'db.managed_runtime') === true
+            ? 'managed_runtime'
+            : (data_get($session->metadata, 'db.managed_lab') === true && app()->environment('local', 'testing') ? 'managed_lab' : null);
+        $adapter = in_array(data_get($session->metadata, 'db.engine'), ['mysql', 'mariadb'], true)
+            ? 'mysql' : (in_array(data_get($session->metadata, 'db.engine'), ['mssql', 'sqlserver'], true) ? 'mssql' : 'postgresql');
+        $binaryKey = $scope === null ? 'sag.db_gateway.binary' : 'sag.db_gateway.'.$scope.'.'.$adapter.'_binary';
+        $binary = realpath((string) config($binaryKey, ''));
         $executable = @readlink('/proc/'.$pid.'/exe');
 
         if ($binary === false || $executable === false || $executable !== $binary) {
@@ -595,14 +630,14 @@ class DbGatewayLifecycleService
         // Compare the exact NUL-terminated environment entry. Never log
         // /proc/environ: the process also holds the internal API token.
         $entry = 'SAG_DB_SESSION_UID='.$session->public_id."\0";
-        if (!str_contains($environment, "\0".$entry) && !str_starts_with($environment, $entry)) {
+        if (! str_contains($environment, "\0".$entry) && ! str_starts_with($environment, $entry)) {
             return false;
         }
 
         $storedTicks = data_get($session->metadata, 'db.gateway_proc_start_ticks');
         if ($storedTicks !== null) {
             $liveTicks = $this->processStartTicks($pid);
-            if ($liveTicks === null || !hash_equals((string) $storedTicks, $liveTicks)) {
+            if ($liveTicks === null || ! hash_equals((string) $storedTicks, $liveTicks)) {
                 return false;
             }
         }
@@ -615,7 +650,7 @@ class DbGatewayLifecycleService
      * Save on launch to detect PID reuse. A legacy session without ticks
      * still must pass exact executable and session UID checks.
      */
-    private function processStartTicks(int $pid): ?string
+    protected function processStartTicks(int $pid): ?string
     {
         $stat = @file_get_contents('/proc/'.$pid.'/stat');
         if ($stat === false) {
@@ -640,14 +675,14 @@ class DbGatewayLifecycleService
         int $sleepMicroseconds,
     ): bool {
         for ($i = 0; $i < $attempts; $i++) {
-            if (!$this->isProcessRunning($pid)) {
+            if (! $this->isProcessRunning($pid)) {
                 return true;
             }
 
             usleep($sleepMicroseconds);
         }
 
-        return !$this->isProcessRunning($pid);
+        return ! $this->isProcessRunning($pid);
     }
 
     private function sendSignal(int $pid, int $signal): bool
@@ -665,7 +700,7 @@ class DbGatewayLifecycleService
         return $exitCode === 0;
     }
 
-    private function writeAudit(
+    protected function writeAudit(
         DbAccessSession $session,
         ?DbConnection $connection,
         string $eventType,
