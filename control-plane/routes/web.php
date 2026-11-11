@@ -3,6 +3,7 @@
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\OperationController;
 use App\Http\Controllers\Admin\ResourceController;
+use App\Http\Controllers\Admin\ResourceCredentialController;
 use App\Http\Controllers\Admin\SessionController;
 use App\Http\Controllers\Admin\AdministratorController;
 use App\Http\Controllers\Admin\AuditController;
@@ -11,6 +12,7 @@ use App\Http\Controllers\Admin\AlertHealthController;
 use App\Http\Controllers\Admin\AlertChannelSettingsController;
 use App\Http\Controllers\Admin\AdSettingsController;
 use App\Http\Controllers\Admin\SettingsController;
+use App\Http\Controllers\Admin\NotificationController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\MfaController;
 use Illuminate\Http\Request;
@@ -71,7 +73,13 @@ Route::middleware(['auth', 'ce.admin', 'ce.mfa'])
     ->prefix('admin')
     ->as('admin.')
     ->group(function (): void {
+        Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
+        Route::get('/notifications/feed', [NotificationController::class, 'feed'])->middleware('throttle:90,1')->name('notifications.feed');
+        Route::post('/notifications/read', [NotificationController::class, 'read'])->middleware('throttle:60,1')->name('notifications.read');
+        Route::post('/notifications/read-all', [NotificationController::class, 'readAll'])->middleware('throttle:20,1')->name('notifications.read-all');
         Route::get('/settings', SettingsController::class)->name('settings.index');
+        Route::post('/settings/timezone', [SettingsController::class, 'updateTimezone'])
+            ->middleware('throttle:10,1')->name('settings.timezone');
         Route::get('/ad-settings', [AdSettingsController::class, 'index'])->name('ad-settings.index');
         Route::post('/ad-settings', [AdSettingsController::class, 'update'])->middleware('throttle:5,1')->name('ad-settings.update');
         Route::post('/ad-settings/test', [AdSettingsController::class, 'test'])->middleware('throttle:3,1')->name('ad-settings.test');
@@ -104,6 +112,9 @@ Route::middleware(['auth', 'ce.admin', 'ce.mfa'])
             ->middleware('throttle:10,1')
             ->name('resources.store');
 
+        Route::post('/resources/{resource}/credentials', [ResourceCredentialController::class, 'update'])
+            ->middleware('throttle:5,1')->name('resources.credentials.update');
+
         Route::get('/resources/{resource}/edit', [ResourceController::class, 'edit'])
             ->name('resources.edit');
 
@@ -134,6 +145,7 @@ Route::middleware(['auth', 'ce.admin', 'ce.mfa'])
 
         Route::get('/sessions', [SessionController::class, 'index'])
             ->name('sessions.index');
+
 
         Route::get('/sessions/{session}', [SessionController::class, 'show'])
             ->name('sessions.show');

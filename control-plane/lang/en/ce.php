@@ -5,6 +5,22 @@ return [
     'product_name' => 'SAG DB Access Gateway',
     'edition' => 'CE',
 
+    'sidebar' => [
+        'collapse' => 'Collapse sidebar',
+        'expand' => 'Expand sidebar',
+        'copy_id' => 'Copy ID',
+        'copied' => 'Copied',
+        'copy_failed' => 'Copy failed',
+    ],
+    'timezone' => [
+        'title' => 'Interface time zone',
+        'description' => 'Used to display timestamps across the administration console.',
+        'label' => 'Time zone',
+        'save' => 'Save time zone',
+        'saved' => 'Time zone updated.',
+        'current' => 'Current',
+        'utc_note' => 'Database timestamps and audit records remain in UTC.',
+    ],
     'navigation' => 'Menu',
     'groups' => ['workspace' => 'Workspace', 'monitoring' => 'Monitoring', 'administration' => 'Administration'],
     'nav' => [
@@ -47,6 +63,7 @@ return [
         'critical' => 'Critical',
         'high' => 'High',
         'medium' => 'Medium',
+        'info' => 'Informational',
         'low' => 'Low',
         'not_available' => '—',
     ],
