@@ -63,6 +63,7 @@ return [
         'critical' => 'Critical',
         'high' => 'High',
         'medium' => 'Medium',
+        'info' => 'Informational',
         'low' => 'Low',
         'not_available' => '—',
     ],

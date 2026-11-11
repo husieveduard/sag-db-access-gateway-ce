@@ -155,7 +155,33 @@
         window.setInterval(() => { if (!document.hidden) refresh(); }, 60000);
     }
 
+
+    function initAuditInspector() {
+        const dialog = document.getElementById('ce-audit-dialog');
+        if (!dialog) return;
+        const json = document.getElementById('ce-audit-json');
+        const title = document.getElementById('ce-audit-dialog-title');
+        const when = document.getElementById('ce-audit-dialog-time');
+        const copy = document.getElementById('ce-audit-copy');
+        document.querySelectorAll('[data-ce-audit-open]').forEach(button => {
+            button.addEventListener('click', () => {
+                const payload = document.getElementById(button.dataset.ceAuditOpen);
+                if (!payload) return;
+                title.textContent = button.dataset.ceAuditTitle || '';
+                when.textContent = button.dataset.ceAuditTime || '';
+                json.textContent = payload.content.textContent;
+                dialog.showModal();
+            });
+        });
+        copy.addEventListener('click', async () => {
+            const ok = await copyIdentifier(json.textContent);
+            copy.title = ok ? copy.dataset.labelCopied : copy.dataset.labelFailed;
+            copy.setAttribute('aria-label', copy.title);
+        });
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
+        initAuditInspector();
         initNotifications();
         const shell = document.querySelector('.ce-app-shell');
         const toggle = document.getElementById('ce-sidebar-toggle');
