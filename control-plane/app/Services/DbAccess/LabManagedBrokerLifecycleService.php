@@ -85,6 +85,7 @@ class LabManagedBrokerLifecycleService extends DbGatewayLifecycleService
         }, 3);
         $process = null;
         $pid = null;
+        $ticks = null;
         $bound = false;
         $phase = 'spawn';
         $pipes = [];
@@ -202,20 +203,7 @@ class LabManagedBrokerLifecycleService extends DbGatewayLifecycleService
                 }
                 proc_close($process);
             }
-            $session->refresh();
-            $ownsLaunch = $bound ? (int) data_get($session->metadata, 'db.gateway_pid') === $pid
-                : data_get($session->metadata, 'db.gateway_pid') === null;
-            if ($ownsLaunch && $session->status === 'stopping') {
-                // Reconcile a revoke that raced with startup only after our
-                // owned child is confirmed stopped. Never overwrite a terminal
-                // state or signal a PID that belongs to a replacement launch.
-                if (! $bound && $session->started_at === null) {
-                    $session->forceFill(['gateway_port' => null])->save();
-                }
-                $this->terminate($session, $session->terminated_by_user_id, $session->termination_reason ?? 'startup_revoked');
-            } elseif ($ownsLaunch && in_array($session->status, ['starting', 'started'], true)) {
-                $this->markStartFailed($session, $scope.'_'.$phase.'_failed');
-            }
+            $this->reconcileFailedLaunch($session, $bound ? $pid : null, $bound ? $ticks : null, $scope.'_'.$phase.'_failed');
             throw new RuntimeException('Managed '.$label.' broker launch failed.');
         } finally {
             foreach ($pipes as $pipe) {
@@ -223,6 +211,34 @@ class LabManagedBrokerLifecycleService extends DbGatewayLifecycleService
                     fclose($pipe);
                 }
             }
+        }
+    }
+
+    protected function reconcileFailedLaunch(DbAccessSession $session, ?int $pid, ?string $ticks, string $reason): void
+    {
+        $stopping = DB::transaction(function () use ($session, $pid, $ticks, $reason): ?DbAccessSession {
+            $locked = DbAccessSession::query()->whereKey($session->id)->lockForUpdate()->firstOrFail();
+            $recordedPid = data_get($locked->metadata, 'db.gateway_pid');
+            $ownsLaunch = $pid === null ? $recordedPid === null
+                : (int) $recordedPid === $pid && data_get($locked->metadata, 'db.gateway_proc_start_ticks') === $ticks;
+            if (! $ownsLaunch) {
+                return null;
+            }
+            if ($locked->status === 'stopping') {
+                // The caller has already stopped its child.
+                if ($pid === null && $locked->started_at === null) {
+                    $locked->forceFill(['gateway_port' => null])->save();
+                }
+                return $locked;
+            }
+            if (in_array($locked->status, ['starting', 'started'], true)) {
+                $this->markStartFailed($locked, $reason);
+            }
+            return null;
+        }, 3);
+
+        if ($stopping !== null) {
+            $this->terminate($stopping, $stopping->terminated_by_user_id, $stopping->termination_reason ?? 'startup_revoked');
         }
     }
 }

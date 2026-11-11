@@ -8,6 +8,7 @@ use App\Models\DbConnection;
 use App\Models\DbQueryEvent;
 use App\Services\Credentials\ManagedBackendAuthentication;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 class DbGatewayLifecycleService
@@ -200,20 +201,25 @@ class DbGatewayLifecycleService
         ?int $actorUserId = null,
         string $reason = 'manual_revoke',
     ): array {
+        $session = DB::transaction(function () use ($session, $actorUserId, $reason): DbAccessSession {
+            $locked = DbAccessSession::query()->whereKey($session->id)->lockForUpdate()->firstOrFail();
+            if (! in_array($locked->status, ['terminated', 'expired'], true)) {
+                $locked->forceFill([
+                    'status' => 'stopping',
+                    'termination_reason' => $reason,
+                    'terminated_by_user_id' => $actorUserId,
+                    'last_activity_at' => now(),
+                ])->save();
+            }
+            return $locked;
+        }, 3);
+
         if (in_array($session->status, ['terminated', 'expired'], true)) {
             return [
                 'already_terminal' => true,
                 'status' => $session->status,
             ];
         }
-
-        // Deny new gateway connections before signalling the process.
-        $session->forceFill([
-            'status' => 'stopping',
-            'termination_reason' => $reason,
-            'terminated_by_user_id' => $actorUserId,
-            'last_activity_at' => now(),
-        ])->save();
 
         $gateway = $this->stopGateway($session);
         $confirmed = $this->gatewayStopConfirmed($session, $gateway);

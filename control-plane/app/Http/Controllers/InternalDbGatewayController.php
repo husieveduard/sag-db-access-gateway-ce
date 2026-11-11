@@ -10,6 +10,7 @@ use App\Models\DatabaseResource;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class InternalDbGatewayController extends Controller
@@ -33,7 +34,17 @@ class InternalDbGatewayController extends Controller
             'metadata' => ['nullable', 'array'],
         ]);
 
-        $session = $this->findSession($data['session_uid']);
+        return DB::transaction(fn () => $this->recordConnectionStarted($data), 3);
+    }
+
+    private function recordConnectionStarted(array $data): JsonResponse
+    {
+        $session = DbAccessSession::query()
+            ->with('resource')
+            ->where('public_id', $data['session_uid'])
+            ->lockForUpdate()
+            ->first();
+        abort_unless($session, 404, 'DB access session not found.');
 
         if ($session->expires_at?->isPast()) {
             return response()->json([
